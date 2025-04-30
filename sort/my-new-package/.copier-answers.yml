@@ -1,0 +1,10 @@
+# Changes here will be overwritten by Copier; NEVER EDIT MANUALLY
+_commit: 08e8b92
+_src_path: gh:schwallergroup/copier-liac-minimal
+author_email: daphne.delacou@epfl.ch
+author_name: Delacou Daphné
+github_org: ddelacou
+package_name: molstorage
+project_name: molstorage
+short_description: Storage of chemical based on their properties and interactions
+    with eachother.
