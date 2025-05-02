@@ -12,7 +12,8 @@ dependencies = [
     # "rdkit",
 ]
 authors = [
-    {name = "Delacou Daphné", email = "daphne.delacou@epfl.ch"}
+    {name = "Delacou Daphné", email = "daphne.delacou@epfl.ch"}, {name = "Mercier Charlotte", email = "charlotte.mercier@epfl.ch"},
+    {name = "Verstraete Noor", email = "noor.verstraete@epfl.ch"
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
