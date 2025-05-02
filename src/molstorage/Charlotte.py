@@ -9,6 +9,8 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 
+# TODO compare Gas/gas and explosive/explosive
+
 # Function to get the CID of the compound
 def get_cid(query: str) -> str:
     """Resolve a name or SMILES string to a PubChem CID."""
@@ -69,8 +71,8 @@ def can_be_stored_together(products: list[tuple[str, list[str]]]) -> bool:
 
     # Rule: Explosive or Gas Cylinder must be stored alone
     for name, pictos in products:
-        if "Explosive" in pictos or "Gas Cylinder" in pictos:
-            print(f"[ALERT] Product {name} contains 'Explosive' or 'Gas Cylinder' and must be stored alone.")
+        if "Explosive" in pictos or "Compressed Gas" in pictos:
+            print(f"[ALERT] Product {name} contains 'Explosive' or 'Compressed Gas' and must be stored alone.")
             return False
 
     pictos1_set = set(pictos1)
