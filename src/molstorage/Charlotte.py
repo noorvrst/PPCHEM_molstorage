@@ -9,8 +9,6 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 
-# TODO compare Gas/gas and explosive/explosive
-
 # Function to get the CID of the compound
 def get_cid(query: str) -> str:
     """Resolve a name or SMILES string to a PubChem CID."""
@@ -60,7 +58,7 @@ def get_safety_pictograms(cid: str) -> list[str]:
     finally:
         driver.quit()
 
-# Function to check incompatibility between two products and include product names
+# Updated function to check storage compatibility
 def can_be_stored_together(products: list[tuple[str, list[str]]]) -> bool:
     """Checks if two products can be stored together based on GHS pictogram incompatibilities."""
     if len(products) != 2:
@@ -69,28 +67,38 @@ def can_be_stored_together(products: list[tuple[str, list[str]]]) -> bool:
     name1, pictos1 = products[0]
     name2, pictos2 = products[1]
 
-    # Rule: Explosive or Gas Cylinder must be stored alone
-    for name, pictos in products:
+    name1_lower = name1.lower()
+    name2_lower = name2.lower()
+    pictos1_set = set([p.title() for p in pictos1])
+    pictos2_set = set([p.title() for p in pictos2])
+
+    print(f"[INFO] {name1} Pictograms: {pictos1_set}")
+    print(f"[INFO] {name2} Pictograms: {pictos2_set}")
+
+    # Case: Same product
+    if name1_lower == name2_lower:
+        if "Explosive" in pictos1_set or "Compressed Gas" in pictos1_set:
+            print(f"[ALERT] Two identical products contain 'Explosive' or 'Compressed Gas'. Must be stored alone.")
+            return False
+        print("[INFO] Products are identical and safe to store together.")
+        return True
+
+    # Case: Either one must be stored alone
+    for name, pictos in [(name1, pictos1_set), (name2, pictos2_set)]:
         if "Explosive" in pictos or "Compressed Gas" in pictos:
             print(f"[ALERT] Product {name} contains 'Explosive' or 'Compressed Gas' and must be stored alone.")
             return False
 
-    pictos1_set = set(pictos1)
-    pictos2_set = set(pictos2)
-    print(f"[INFO] {name1} Pictograms: {pictos1_set}")
-    print(f"[INFO] {name2} Pictograms: {pictos2_set}")
-
-    # Incompatibility rules (between products only)
+    # Known incompatibility rules
     incompatibles = [
         {"Oxidizer", "Flammable"},
         {"Corrosive", "Flammable"},
         {"Corrosive", "Acute Toxic"},
         {"Corrosive", "Health Hazard"},
         {"Acute Toxic", "Health Hazard"},
-        {"Corrosive", "Toxic"},
-        {"Oxidizer", "Toxic"},
-        {"Health Hazard", "Flame"},
-        {"Toxic", "Health Hazard"},
+        {"Corrosive", "Acute Toxic"},
+        {"Oxidizer", "Acute Toxic"},
+        {"Health Hazard", "Flammable"},
     ]
 
     for rule in incompatibles:
@@ -103,7 +111,7 @@ def can_be_stored_together(products: list[tuple[str, list[str]]]) -> bool:
 
 # MAIN PROGRAM
 if __name__ == "__main__":
-    product_names = ["trinitrotoluene", "glucose"]  # Change as needed
+    product_names = ["trinitrotoluene", "trinitroanisole"]  # Example: same product
 
     products = []
     for name in product_names:
