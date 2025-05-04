@@ -93,12 +93,8 @@ def can_be_stored_together(products: list[tuple[str, list[str]]]) -> bool:
     incompatibles = [
         {"Oxidizer", "Flammable"},
         {"Corrosive", "Flammable"},
-        {"Corrosive", "Acute Toxic"},
         {"Corrosive", "Health Hazard"},
-        {"Acute Toxic", "Health Hazard"},
         {"Corrosive", "Acute Toxic"},
-        {"Oxidizer", "Acute Toxic"},
-        {"Health Hazard", "Flammable"},
     ]
 
     for rule in incompatibles:
