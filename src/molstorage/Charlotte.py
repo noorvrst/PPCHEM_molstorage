@@ -107,7 +107,7 @@ def can_be_stored_together(products: list[tuple[str, list[str]]]) -> bool:
 
 # MAIN PROGRAM
 if __name__ == "__main__":
-    product_names = ["acetone", "acetone"]  # Example: same product
+    product_names = ["acetone", "lithium"]  # Example: same product
 
     products = []
     for name in product_names:
