@@ -11,31 +11,34 @@ from selenium.webdriver.support.ui import WebDriverWait  # (Import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC  # (Import EC for expected conditions in wait)
 from webdriver_manager.chrome import ChromeDriverManager  # (Import ChromeDriverManager to auto-install ChromeDriver)
 
-import requests  # (Duplicate import of requests, can be removed)
+from bs4 import BeautifulSoup
+import requests
+from io import BytesIO
+from pdfminer.high_level import extract_text
+import re
 import urllib.parse  # (Import urllib.parse to encode query strings for URLs)
 
-# Make sure to install all the necessary packages (selenium, requests)
-# Gets the cid ("id") of the name or smile of the molecule and then returns its chemical safety information. (2 functions work together)
-
-def get_cid(query: str) -> str:  # (Define function to get CID from a name or SMILES string)
+# Function to get CID from a name or SMILES string
+def get_cid(query: str) -> str:
     """Resolve a name or SMILES string to a PubChem CID."""
     is_smiles = any(c in query for c in "=#[]()123456789\\/")  # (Check if query contains SMILES characters)
 
-    if is_smiles:  # (If the query is a SMILES string)
-        encoded = urllib.parse.quote(query, safe="")  # (URL-encode the SMILES string)
-        url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/{encoded}/cids/TXT"  # (Build URL for SMILES to CID)
-    else:  # (If the query is a compound name)
-        encoded = urllib.parse.quote(query, safe="")  # (URL-encode the name)
-        url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{encoded}/cids/TXT"  # (Build URL for name to CID)
+    if is_smiles:
+        encoded = urllib.parse.quote(query, safe="")
+        url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/{encoded}/cids/TXT"
+    else:
+        encoded = urllib.parse.quote(query, safe="")
+        url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{encoded}/cids/TXT"
 
-    r = requests.get(url)  # (Send GET request to PubChem)
-    r.raise_for_status()  # (Raise error if request failed)
-    cid = r.text.strip()  # (Get response text and strip whitespace)
-    if not cid:  # (If no CID found)
-        raise ValueError(f"No CID found for '{query}'")  # (Raise error indicating no result)
-    print(f"[INFO] Found CID: {cid}")  # (Print found CID)
-    return cid  # (Return the CID)
+    r = requests.get(url)
+    r.raise_for_status()
+    cid = r.text.strip()
+    if not cid:
+        raise ValueError(f"No CID found for '{query}'")
+    print(f"[INFO] Found CID: {cid}")
+    return cid
 
+# Function to get compound name from CID
 def get_compound_name(cid: str) -> str:
     """Fetch the compound name from PubChem given its CID."""
     url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/{cid}/property/IUPACName/JSON"
@@ -44,62 +47,145 @@ def get_compound_name(cid: str) -> str:
     data = r.json()
     return data["PropertyTable"]["Properties"][0]["IUPACName"]
 
-
-def get_safety_pictograms(cid: str) -> list[str]:  # (Define function to get safety pictograms from PubChem using CID)
+# Function to get GHS pictograms
+def get_safety_pictograms(cid: str) -> list[str]:
     """Scrape GHS pictogram names, filtering out number-like captions like '1-3-0'."""
-    url = f"https://pubchem.ncbi.nlm.nih.gov/compound/{cid}"  # (Construct the compound URL)
-    opts = Options()  # (Create Chrome options object)
-    opts.headless = True  # (Run Chrome in headless mode, no GUI)
+    url = f"https://pubchem.ncbi.nlm.nih.gov/compound/{cid}"
+    opts = Options()
+    opts.headless = True  # Run Chrome in headless mode, no GUI
 
-    service = Service(ChromeDriverManager().install())  # (Automatically install and configure ChromeDriver)
-    driver = webdriver.Chrome(service=service, options=opts)  # (Launch Chrome browser with given options)
+    service = Service(ChromeDriverManager().install())
+    driver = webdriver.Chrome(service=service, options=opts)
 
     try:
-        driver.get(url)  # (Navigate to the compound page)
-        print(f"[INFO] Loading {url}")  # (Print info message)
+        driver.get(url)
+        print(f"[INFO] Loading {url}")
 
-        WebDriverWait(driver, 20).until(  # (Wait up to 20 seconds for element to load)
-            EC.presence_of_element_located((By.CSS_SELECTOR, "section#Safety-and-Hazards"))  # (Wait for Safety section)
+        WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "section#Safety-and-Hazards"))
         )
-        section = driver.find_element(By.CSS_SELECTOR, "section#Safety-and-Hazards")  # (Find the Safety section)
+        section = driver.find_element(By.CSS_SELECTOR, "section#Safety-and-Hazards")
 
-        raw = []  # (Initialize empty list to store captions)
-        for el in section.find_elements(By.CSS_SELECTOR, "div.captioned.inline-block"):  # (Iterate over pictogram elements)
-            caption = el.get_attribute("data-caption") or ""  # (Get caption text or empty string)
-            caption = caption.strip()  # (Remove surrounding whitespace)
+        raw = []
+        for el in section.find_elements(By.CSS_SELECTOR, "div.captioned.inline-block"):
+            caption = el.get_attribute("data-caption") or ""
+            caption = caption.strip()
 
-            # Skip things that look like '1-3-0' or mostly digits/dashes
-            if re.fullmatch(r"[\d\s\-\/]+", caption):  # (Skip if caption is only numbers/dashes)
+            if re.fullmatch(r"[\d\s\-\/]+", caption):
+                continue
+            if re.search(r"\d", caption):
                 continue
 
-            # Skip captions that contain any digits
-            if re.search(r"\d", caption):  # (Skip if any number appears in the caption)
-                continue
+            if caption:
+                raw.append(caption)
 
-            if caption:  # (If caption is not empty)
-                raw.append(caption)  # (Add caption to the list)
-
-        print(f"[INFO] Pictograms: {raw}")  # (Print the extracted pictograms)
-        return raw  # (Return the list of pictograms)
+        print(f"[INFO] Pictograms: {raw}")
+        return raw
 
     finally:
-        driver.quit()  # (Close the browser whether an error occurred or not)
+        driver.quit()
 
+# Function to get Fisher SDS link
+def get_fisher_sds_link(chemical_name):
+    search_query = chemical_name.replace(" ", "+")
+    search_url = f"https://www.fishersci.com/us/en/catalog/search/sds?selectLang=EN&store=&msdsKeyword={search_query}"
+    headers = {"User-Agent": "Mozilla/5.0"}
+
+    response = requests.get(search_url, headers=headers)
+    if response.status_code != 200:
+        print("Failed to fetch the page.")
+        return None
+
+    soup = BeautifulSoup(response.text, "html.parser")
+    link_divs = soup.find_all("div", class_="catlog_items")
+
+    for div in link_divs:
+        a_tag = div.find("a", href=True)
+        if a_tag and "store/msds" in a_tag["href"]:
+            full_url = "https://www.fishersci.com" + a_tag["href"]
+            return full_url
+
+    print("No SDS link found.")
+    return None
+
+# Function to extract specific sections from the SDS PDF
+def extract_sds_sections(pdf_url):
+    headers = {"User-Agent": "Mozilla/5.0"}
+    
+    response = requests.get(pdf_url, headers=headers)
+    if response.status_code != 200:
+        print("Failed to download the PDF.")
+        return None, None
+    
+    pdf_file = BytesIO(response.content)
+    text = extract_text(pdf_file)
+    
+    section7 = extract_section(text, "7. HANDLING AND STORAGE", "8.")
+    if not section7:
+        section7 = extract_section(text, "7. Handling and storage", "8.")
+    
+    section10 = extract_section(text, "10. STABILITY AND REACTIVITY", "11.")
+    if not section10:
+        section10 = extract_section(text, "10. Stability and reactivity", "11.")
+    
+    return section7, section10
+
+# Helper function to extract a specific section of the SDS
+def extract_section(text, start_marker, end_marker):
+    start_idx = text.find(start_marker)
+    if start_idx == -1:
+        return None
+    
+    end_idx = text.find(end_marker, start_idx)
+    if end_idx == -1:
+        section_text = text[start_idx:]
+    else:
+        section_text = text[start_idx:end_idx]
+    
+    section_text = section_text.replace(start_marker, "").strip()
+    section_text = re.sub(r'\n\s*\n', '\n\n', section_text)
+    
+    return section_text
+
+# Main program
 if __name__ == "__main__":
-    print("🔍 Enter the name or SMILES of a compound to retrieve its safety information.\n")
-    query = input("Enter compound name or SMILES: ").strip()  # (Prompt user for input and strip whitespace)
-    try:
-        cid = get_cid(query)  # (Get CID from the input query)
-        compound_name = get_compound_name(cid)  # (Get the compound's name from PubChem)
-        print(f"\n🧪 Molecule: {compound_name}")  # (Print the compound name)
+    print("🔍 Enter the name or SMILES of a compound to retrieve its safety and storage information.\n")
+    query = input("Enter compound name or SMILES: ").strip()
 
-        pics = get_safety_pictograms(cid)  # (Get safety pictograms for the CID)
-        print("\n✅ Final safety pictograms:")
-        for p in pics:
+    try:
+        # Step 1: PubChem - Get safety pictograms
+        cid = get_cid(query)
+        compound_name = get_compound_name(cid)
+        print(f"\n🧪 Molecule: {compound_name}")
+        pictos = get_safety_pictograms(cid)
+
+        print("\n✅ GHS Safety Pictograms:")
+        for p in pictos:
             print("  -", p)
+
+        # Step 2: Fisher SDS - Get sections 7 and 10
+        print("\n📄 Fetching SDS (Safety Data Sheet)...")
+        sds_link = get_fisher_sds_link(compound_name)
+        if sds_link:
+            print(f"[INFO] SDS PDF found: {sds_link}")
+            section7, section10 = extract_sds_sections(sds_link)
+
+            if section7:
+                print("\n📦 Section 7 - Handling and Storage:\n")
+                print(section7)
+            else:
+                print("⚠️ Section 7 not found.")
+
+            if section10:
+                print("\n🧪 Section 10 - Stability and Reactivity:\n")
+                print(section10)
+            else:
+                print("⚠️ Section 10 not found.")
+        else:
+            print("❌ SDS PDF link not found.")
     except Exception as e:
         print("❌ Error:", e)
-
+    
 # function to test the compatibility of two molecules
 def can_be_stored_together(products: list[tuple[str, list[str]]]) -> bool:
     """Checks if two products can be stored together based on GHS pictogram incompatibilities."""
