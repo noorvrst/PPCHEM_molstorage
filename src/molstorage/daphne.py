@@ -1,104 +1,215 @@
+import re
+import requests
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from webdriver_manager.chrome import ChromeDriverManager
+import urllib.parse
 from rdkit import Chem
-from rdkit.Chem import Descriptors
+import pubchempy as pcp
+from typing import List, Tuple
+from rdkit import Chem
 
-import re  # (Import the 're' module for regular expressions)
-import requests  # (Import the 'requests' module to make HTTP requests)
-from selenium import webdriver  # (Import webdriver from Selenium to control a web browser)
-from selenium.webdriver.chrome.service import Service  # (Import Service to manage ChromeDriver)
-from selenium.webdriver.chrome.options import Options  # (Import Options to configure Chrome browser settings)
-from selenium.webdriver.common.by import By  # (Import By to specify HTML element locating strategy)
-from selenium.webdriver.support.ui import WebDriverWait  # (Import WebDriverWait to wait for elements to load)
-from selenium.webdriver.support import expected_conditions as EC  # (Import EC for expected conditions in wait)
-from webdriver_manager.chrome import ChromeDriverManager  # (Import ChromeDriverManager to auto-install ChromeDriver)
 
-import requests  # (Duplicate import of requests, can be removed)
-import urllib.parse  # (Import urllib.parse to encode query strings for URLs)
-
-# Make sure to install all the necessary packages (selenium, requests)
-# Gets the cid ("id") of the name or smile of the molecule and then returns its chemical safety information. (2 functions work together)
-
-def get_cid(query: str) -> str:  # (Define function to get CID from a name or SMILES string)
-    """Resolve a name or SMILES string to a PubChem CID."""
-    is_smiles = any(c in query for c in "=#[]()123456789\\/")  # (Check if query contains SMILES characters)
-
-    if is_smiles:  # (If the query is a SMILES string)
-        encoded = urllib.parse.quote(query, safe="")  # (URL-encode the SMILES string)
-        url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/{encoded}/cids/TXT"  # (Build URL for SMILES to CID)
-    else:  # (If the query is a compound name)
-        encoded = urllib.parse.quote(query, safe="")  # (URL-encode the name)
-        url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{encoded}/cids/TXT"  # (Build URL for name to CID)
-
-    r = requests.get(url)  # (Send GET request to PubChem)
-    r.raise_for_status()  # (Raise error if request failed)
-    cid = r.text.strip()  # (Get response text and strip whitespace)
-    if not cid:  # (If no CID found)
-        raise ValueError(f"No CID found for '{query}'")  # (Raise error indicating no result)
-    print(f"[INFO] Found CID: {cid}")  # (Print found CID)
-    return cid  # (Return the CID)
-
-def get_compound_name(cid: str) -> str:
-    """Fetch the compound name from PubChem given its CID."""
-    url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/{cid}/property/IUPACName/JSON"
+def get_cid(query: str) -> str:
+    """Resolve a name or SMILES to a PubChem CID."""
+    encoded = urllib.parse.quote(query, safe="")
+    url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{encoded}/cids/TXT"
     r = requests.get(url)
     r.raise_for_status()
-    data = r.json()
-    return data["PropertyTable"]["Properties"][0]["IUPACName"]
+    cid = r.text.strip()
+    if not cid:
+        raise ValueError(f"No CID found for '{query}'")
+    print(f"Found CID: {cid}")
+    return cid
+
+def get_name_and_smiles(cid: str) -> tuple[str, str, str]:
+    """Return the Record Title (generic name), IUPAC name, and SMILES from a given CID using PubChemPy."""
+    compound = pcp.Compound.from_cid(cid)
+
+    record_title = compound.synonyms[0] if compound.synonyms else "Unknown"
+    iupac_name = compound.iupac_name or "Unknown"
+    smiles = compound.isomeric_smiles or compound.canonical_smiles or "Unknown"
+
+    return record_title, iupac_name, smiles
 
 
-def get_safety_pictograms(cid: str) -> list[str]:  # (Define function to get safety pictograms from PubChem using CID)
-    """Scrape GHS pictogram names, filtering out number-like captions like '1-3-0'."""
-    url = f"https://pubchem.ncbi.nlm.nih.gov/compound/{cid}"  # (Construct the compound URL)
-    opts = Options()  # (Create Chrome options object)
-    opts.headless = True  # (Run Chrome in headless mode, no GUI)
-
-    service = Service(ChromeDriverManager().install())  # (Automatically install and configure ChromeDriver)
-    driver = webdriver.Chrome(service=service, options=opts)  # (Launch Chrome browser with given options)
+def get_safety_info(cid_name: str) -> Tuple[List[str], List[str]]:
+    """Scrape GHS hazard statements and pictograms from PubChem Safety and Hazards section."""
+    url = f"https://pubchem.ncbi.nlm.nih.gov/compound/{cid_name}"
+    opts = Options()
+    opts.headless = True
+    service = Service(ChromeDriverManager().install())
+    driver = webdriver.Chrome(service=service, options=opts)
 
     try:
-        driver.get(url)  # (Navigate to the compound page)
-        print(f"[INFO] Loading {url}")  # (Print info message)
+        # Build URL from CID or compound name
+        driver.get(url)
+        print(f"[INFO] Loading {url}")
 
-        WebDriverWait(driver, 20).until(  # (Wait up to 20 seconds for element to load)
-            EC.presence_of_element_located((By.CSS_SELECTOR, "section#Safety-and-Hazards"))  # (Wait for Safety section)
-        )
-        section = driver.find_element(By.CSS_SELECTOR, "section#Safety-and-Hazards")  # (Find the Safety section)
+        # Wait for page to fully load
+        WebDriverWait(driver, 10).until(lambda d: d.execute_script("return document.readyState") == "complete")
+        if "404" in driver.title:
+            raise ValueError(f"Invalid CID or compound not found: {cid_name}")
 
-        raw = []  # (Initialize empty list to store captions)
-        for el in section.find_elements(By.CSS_SELECTOR, "div.captioned.inline-block"):  # (Iterate over pictogram elements)
-            caption = el.get_attribute("data-caption") or ""  # (Get caption text or empty string)
-            caption = caption.strip()  # (Remove surrounding whitespace)
+        # Check for Safety and Hazards section
+        section = None
+        elements = driver.find_elements(By.CSS_SELECTOR, "section#Safety-and-Hazards")
+        if elements:
+            section = elements[0]
+        else:
+            return ["No hazard statements"], ["No pictograms"]
 
-            # Skip things that look like '1-3-0' or mostly digits/dashes
-            if re.fullmatch(r"[\d\s\-\/]+", caption):  # (Skip if caption is only numbers/dashes)
+        # --- Extract pictograms ---
+        pictograms = []
+        for el in section.find_elements(By.CSS_SELECTOR, "div.captioned.inline-block"):
+            caption = el.get_attribute("data-caption") or ""
+            caption = caption.strip()
+            if re.fullmatch(r"[\d\s\-\/]+", caption):
                 continue
-
-            # Skip captions that contain any digits
-            if re.search(r"\d", caption):  # (Skip if any number appears in the caption)
+            if any(char.isdigit() for char in caption):
                 continue
+            if caption:
+                pictograms.append(caption)
+        if not pictograms:
+            pictograms.append("No pictograms")
 
-            if caption:  # (If caption is not empty)
-                raw.append(caption)  # (Add caption to the list)
+        # --- Extract hazard statements ---
+        statements = []
 
-        print(f"[INFO] Pictograms: {raw}")  # (Print the extracted pictograms)
-        return raw  # (Return the list of pictograms)
+        def extract_statements(tag_selector: str) -> List[str]:
+            found = []
+            for tag in section.find_elements(By.CSS_SELECTOR, tag_selector):
+                text = tag.text.strip()
+                if re.match(r"H\d{3}", text):
+                    found.append(text)
+            return found
+
+        # Priority: try <p> first
+        statements = extract_statements("p")
+
+        # If <p> tags found nothing, try <div>
+        if not statements:
+            statements = extract_statements("div")
+
+        # If still none found
+        if not statements:
+            statements = ["No hazard statements"]
+
+        # Remove duplicates, preserve order
+        seen = set()
+        unique_statements = []
+        for s in statements:
+            if s not in seen:
+                seen.add(s)
+                unique_statements.append(s)
+
+        return unique_statements, pictograms
 
     finally:
-        driver.quit()  # (Close the browser whether an error occurred or not)
+        driver.quit()
+
+
+
+def classify_acid_base(name: str, iupac_name: str, smiles: str, ghs_statements: list[str]) -> str:
+    """Classify compound as acid or base based on name, IUPAC, SMILES structure, and GHS hazard statements."""
+    name = name.lower()
+    iupac_name = iupac_name.lower()
+    smiles_upper = smiles.upper()
+
+    result = []
+
+    # --- Checks for Name, IUPAC, GHS Statements ---
+    full_name = name + " " + iupac_name
+
+    if any("H290" in stmt or "corrosive to metals" in stmt.lower() for stmt in ghs_statements):
+        result.append("Acid/Base (from GHS H290)")
+
+    if "acid" in full_name:
+        result.append("Acid (from name)")
+
+    if any(base_word in full_name for base_word in ["hydroxide", "amine", "ammonia", "amide"]):
+        result.append("Base (from name)")
+
+    if name.endswith("ide") or iupac_name.endswith("ide"):
+        result.append("Possibly base (from suffix 'ide')")
+
+    if any(group in smiles_upper for group in ["COOH", "C(=O)OH", "SO3H"]):
+        result.append("Acid (from SMILES text)")
+
+    if any(group in smiles_upper for group in ["NH2", "NH3", "NH", "OH"]) and "COOH" not in smiles_upper:
+        result.append("Base (from SMILES text)")
+
+    # --- Substructure Matching with SMARTS (RDKit) ---
+    acid_smarts = {
+        "Carboxylic acid": "[CX3](=O)[OX2H1]",  # COOH
+        "Sulfonic acid": "S(=O)(=O)[OH]",       # SO3H
+        "Phenol": "c[OH]",                      # OH on aromatic ring
+    }
+
+    base_smarts = {
+        "Ammonia":        "[NX3;H3]",            # NH3
+        "Amide": "[NX3][CX3](=O)[#6]",
+        "Urea-like": "[NX3][CX3](=O)[NX3]",
+        "Primary amine": "[NX3;H2][CX4]",        
+        "Secondary amine": "[NX3;H1][CX4][CX4]",
+        "Tertiary amine": "[NX3]([CX4])([CX4])",
+        "Imidazole-like": "n1cncc1",
+        "Aniline": "c1ccc(cc1)[NH2]",
+    }
+
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is None:
+        return "Invalid SMILES"
+
+    found_acid = [label for label, smarts in acid_smarts.items() if mol.HasSubstructMatch(Chem.MolFromSmarts(smarts))]
+    found_base = [label for label, smarts in base_smarts.items() if mol.HasSubstructMatch(Chem.MolFromSmarts(smarts))]
+
+    if found_acid:
+        result.append("Acidic groups: " + ", ".join(found_acid))
+    if found_base:
+        result.append("Basic groups: " + ", ".join(found_base))
+
+    if not result:
+        return "Unknown (no clear acid/base features)"
+
+    return " | ".join(result)
+
+
+def main():
+    # List of compound names to test
+    compounds = ["acetic acid", "sodium hydroxide", "ammonia", "benzene", "caffeine", "water"]
+    compounds_2 = ["ammonia"]
+
+    for compound in compounds:
+        print(f"\n{'=' * 40}")
+        print(f"🔍 Analyzing compound: {compound}")
+        try:
+            cid = get_cid(compound)
+            name, iupac, smiles = get_name_and_smiles(cid)
+            hazards, pictos = get_safety_info(cid)
+            acid_base = classify_acid_base(name, iupac, smiles, hazards)
+
+            print(f"CID: {cid}")
+            print(f"Name: {name}")
+            print(f"IUPAC: {iupac}")
+            print(f"SMILES: {smiles}")
+            
+            print("Pictograms:")
+            for pic in pictos:
+                print(f"  - {pic}")
+
+            print("Hazard Statements:")
+            for h in hazards:
+                print(f"  - {h}")
+
+            print(f"Acid/Base Classification: {acid_base}")
+            
+        except Exception as e:
+            print(f"❌ Error processing '{compound}': {e}")
 
 if __name__ == "__main__":
-    query = input("Enter compound name or SMILES: ").strip()  # (Prompt user for input and strip whitespace)
-    try:
-        cid = get_cid(query)  # (Get CID from the input query)
-        compound_name = get_compound_name(cid)  # (Get the compound's name from PubChem)
-        print(f"\n🧪 Molecule: {compound_name}")  # (Print the compound name)
-
-        pics = get_safety_pictograms(cid)  # (Get safety pictograms for the CID)
-        print("\n✅ Final safety pictograms:")
-        for p in pics:
-            print("  -", p)
-    except Exception as e:
-        print("❌ Error:", e)
-        
-        
-
-
+    main()
