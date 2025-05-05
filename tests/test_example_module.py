@@ -1,4 +1,4 @@
-from molstorage.example_module import hello_smiles
+from molstorage.molstorage import hello_smiles
 
 
 # Test the function
