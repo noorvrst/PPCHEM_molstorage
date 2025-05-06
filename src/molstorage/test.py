@@ -1,27 +1,24 @@
 from rdkit import Chem
 from rdkit.Chem import Descriptors
-
-import re  # (Import the 're' module for regular expressions)
-import requests  # (Import the 'requests' module to make HTTP requests)
-from selenium import webdriver  # (Import webdriver from Selenium to control a web browser)
-from selenium.webdriver.chrome.service import Service  # (Import Service to manage ChromeDriver)
-from selenium.webdriver.chrome.options import Options  # (Import Options to configure Chrome browser settings)
-from selenium.webdriver.common.by import By  # (Import By to specify HTML element locating strategy)
-from selenium.webdriver.support.ui import WebDriverWait  # (Import WebDriverWait to wait for elements to load)
-from selenium.webdriver.support import expected_conditions as EC  # (Import EC for expected conditions in wait)
-from webdriver_manager.chrome import ChromeDriverManager  # (Import ChromeDriverManager to auto-install ChromeDriver)
-
+import re  # Import the 're' module for regular expressions
+import requests  # Import the 'requests' module to make HTTP requests
+from selenium import webdriver  # Import webdriver from Selenium to control a web browser
+from selenium.webdriver.chrome.service import Service  # Import Service to manage ChromeDriver
+from selenium.webdriver.chrome.options import Options  # Import Options to configure Chrome browser settings
+from selenium.webdriver.common.by import By  # Import By to specify HTML element locating strategy
+from selenium.webdriver.support.ui import WebDriverWait  # Import WebDriverWait to wait for elements to load
+from selenium.webdriver.support import expected_conditions as EC  # Import EC for expected conditions in wait
+from webdriver_manager.chrome import ChromeDriverManager  # Import ChromeDriverManager to auto-install ChromeDriver
 from bs4 import BeautifulSoup
-import requests
 from io import BytesIO
 from pdfminer.high_level import extract_text
-import re
-import urllib.parse  # (Import urllib.parse to encode query strings for URLs)
+import urllib.parse  # Import urllib.parse to encode query strings for URLs
+
 
 # Function to get CID from a name or SMILES string
 def get_cid(query: str) -> str:
     """Resolve a name or SMILES string to a PubChem CID."""
-    is_smiles = any(c in query for c in "=#[]()123456789\\/")  # (Check if query contains SMILES characters)
+    is_smiles = any(c in query for c in "=#[]()123456789\\/")  # Check if query contains SMILES characters
 
     if is_smiles:
         encoded = urllib.parse.quote(query, safe="")
@@ -35,8 +32,8 @@ def get_cid(query: str) -> str:
     cid = r.text.strip()
     if not cid:
         raise ValueError(f"No CID found for '{query}'")
-    print(f"[INFO] Found CID: {cid}")
     return cid
+
 
 # Function to get compound name from CID
 def get_compound_name(cid: str) -> str:
@@ -47,7 +44,74 @@ def get_compound_name(cid: str) -> str:
     data = r.json()
     return data["PropertyTable"]["Properties"][0]["IUPACName"]
 
-# Function to get GHS pictograms
+
+# Function to classify acid/base based on name, IUPAC, SMILES, and GHS hazard statements
+def classify_acid_base(name: str, iupac_name: str, smiles: str, ghs_statements: list[str]) -> str:
+    """Classify compound as acid or base based on name, IUPAC, SMILES structure, and GHS hazard statements."""
+    name = name.lower()
+    iupac_name = iupac_name.lower()
+    smiles_upper = smiles.upper()
+
+    result = []
+
+    # --- Checks for Name, IUPAC, GHS Statements ---
+    full_name = name + " " + iupac_name
+
+    if any("H290" in stmt or "corrosive to metals" in stmt.lower() for stmt in ghs_statements):
+        result.append("Acid/Base (from GHS H290)")
+
+    if "acid" in full_name:
+        result.append("Acid (from name)")
+
+    if any(base_word in full_name for base_word in ["hydroxide", "amine", "ammonia", "amide"]):
+        result.append("Base (from name)")
+
+    if name.endswith("ide") or iupac_name.endswith("ide"):
+        result.append("Possibly base (from suffix 'ide')")
+
+    if any(group in smiles_upper for group in ["COOH", "C(=O)OH", "SO3H"]):
+        result.append("Acid (from SMILES text)")
+
+    if any(group in smiles_upper for group in ["NH2", "NH3", "NH", "OH"]) and "COOH" not in smiles_upper:
+        result.append("Base (from SMILES text)")
+
+    # --- Substructure Matching with SMARTS (RDKit) ---
+    acid_smarts = {
+        "Carboxylic acid": "[CX3](=O)[OX2H1]",  # COOH
+        "Sulfonic acid": "S(=O)(=O)[OH]",       # SO3H
+        "Phenol": "c[OH]",                      # OH on aromatic ring
+    }
+
+    base_smarts = {
+        "Ammonia":        "[NX3;H3]",            # NH3
+        "Amide": "[NX3][CX3](=O)[#6]",
+        "Urea-like": "[NX3][CX3](=O)[NX3]",
+        "Primary amine": "[NX3;H2][CX4]",        
+        "Secondary amine": "[NX3;H1][CX4][CX4]",
+        "Tertiary amine": "[NX3]([CX4])([CX4])",
+        "Imidazole-like": "n1cncc1",
+        "Aniline": "c1ccc(cc1)[NH2]",
+    }
+
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is None:
+        return "Invalid SMILES"
+
+    found_acid = [label for label, smarts in acid_smarts.items() if mol.HasSubstructMatch(Chem.MolFromSmarts(smarts))]
+    found_base = [label for label, smarts in base_smarts.items() if mol.HasSubstructMatch(Chem.MolFromSmarts(smarts))]
+
+    if found_acid:
+        result.append("Acidic groups: " + ", ".join(found_acid))
+    if found_base:
+        result.append("Basic groups: " + ", ".join(found_base))
+
+    if not result:
+        return "Unknown (no clear acid/base features)"
+
+    return " | ".join(result)
+
+
+# Function to get safety pictograms from PubChem
 def get_safety_pictograms(cid: str) -> list[str]:
     """Scrape GHS pictogram names, filtering out number-like captions like '1-3-0'."""
     url = f"https://pubchem.ncbi.nlm.nih.gov/compound/{cid}"
@@ -59,7 +123,6 @@ def get_safety_pictograms(cid: str) -> list[str]:
 
     try:
         driver.get(url)
-        print(f"[INFO] Loading {url}")
 
         WebDriverWait(driver, 20).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "section#Safety-and-Hazards"))
@@ -79,11 +142,11 @@ def get_safety_pictograms(cid: str) -> list[str]:
             if caption:
                 raw.append(caption)
 
-        print(f"[INFO] Pictograms: {raw}")
         return raw
 
     finally:
         driver.quit()
+
 
 # Function to get Fisher SDS link
 def get_fisher_sds_link(chemical_name):
@@ -105,8 +168,8 @@ def get_fisher_sds_link(chemical_name):
             full_url = "https://www.fishersci.com" + a_tag["href"]
             return full_url
 
-    print("No SDS link found.")
     return None
+
 
 # Function to extract specific sections from the SDS PDF
 def extract_sds_sections(pdf_url):
@@ -121,14 +184,10 @@ def extract_sds_sections(pdf_url):
     text = extract_text(pdf_file)
     
     section7 = extract_section(text, "7. HANDLING AND STORAGE", "8.")
-    if not section7:
-        section7 = extract_section(text, "7. Handling and storage", "8.")
-    
     section10 = extract_section(text, "10. STABILITY AND REACTIVITY", "11.")
-    if not section10:
-        section10 = extract_section(text, "10. Stability and reactivity", "11.")
     
     return section7, section10
+
 
 # Helper function to extract a specific section of the SDS
 def extract_section(text, start_marker, end_marker):
@@ -147,6 +206,7 @@ def extract_section(text, start_marker, end_marker):
     
     return section_text
 
+
 # Main program
 if __name__ == "__main__":
     print("🔍 Enter the name or SMILES of a compound to retrieve its safety and storage information.\n")
@@ -159,11 +219,19 @@ if __name__ == "__main__":
         print(f"\n🧪 Molecule: {compound_name}")
         pictos = get_safety_pictograms(cid)
 
+        # Fetch IUPAC name and SMILES for classification
+        iupac_name = get_compound_name(cid)
+        smiles = ''  # Optionally, you can get the SMILES from PubChem API here if needed
+        
+        # Step 2: Classify as Acid/Base
+        classification = classify_acid_base(compound_name, iupac_name, smiles, pictos)
+        print("\n⚖️ Acid/Base Classification:", classification)
+
         print("\n✅ GHS Safety Pictograms:")
         for p in pictos:
             print("  -", p)
 
-        # Step 2: Fisher SDS - Get sections 7 and 10
+        # Step 3: Fisher SDS - Get sections 7 and 10
         print("\n📄 Fetching SDS (Safety Data Sheet)...")
         sds_link = get_fisher_sds_link(compound_name)
         if sds_link:
@@ -185,7 +253,7 @@ if __name__ == "__main__":
             print("❌ SDS PDF link not found.")
     except Exception as e:
         print("❌ Error:", e)
-    
+
 # function to test the compatibility of two molecules
 def can_be_stored_together(products: list[tuple[str, list[str]]]) -> bool:
     """Checks if two products can be stored together based on GHS pictogram incompatibilities."""
