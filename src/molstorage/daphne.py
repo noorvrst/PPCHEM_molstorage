@@ -41,7 +41,7 @@ def get_safety_info(cid_name: str) -> Tuple[List[str], List[str]]:
     """Scrape GHS hazard statements and pictograms from PubChem Safety and Hazards section."""
     url = f"https://pubchem.ncbi.nlm.nih.gov/compound/{cid_name}"
     opts = Options()
-    opts.headless = True
+    opts.add_argument("--headless=new")
     service = Service(ChromeDriverManager().install())
     driver = webdriver.Chrome(service=service, options=opts)
 
