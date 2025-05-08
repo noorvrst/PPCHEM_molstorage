@@ -319,7 +319,7 @@ def can_be_stored_together(products: list[tuple[str, list[str], str]]) -> bool:
 
     for rule in incompatibles:
         if any(p in pictos1_set for p in rule) and any(p in pictos2_set for p in rule):
-            if not (rule.issubset(pictos1_set) or rule.issubset(pictos2_set)):
+            if rule.issubset(pictos1_set) or rule.issubset(pictos2_set):
                 print(f"[CONFLICT] Incompatibility detected between '{name1}' and '{name2}' due to: {rule}")
                 return False
 
