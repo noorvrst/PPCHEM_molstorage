@@ -275,7 +275,9 @@ def handling_storage_section_7(section_7_text):
         "Storage": storage_sentences
     }
     
-    
+def extract_all_sections(pdf_url):
+    section_7_text, section_10_text, hazard_dict = extract_sds_sections(pdf_url)
+    return section_7_text, section_10_text, hazard_dict
     
 ##################################
 
@@ -307,8 +309,6 @@ def main():
             print(f"{title}:")
             for item in info:
                 print(f"- {item}")
-          
-        
         
     except ValueError as e:
         print(f"[ERROR] {e}")
