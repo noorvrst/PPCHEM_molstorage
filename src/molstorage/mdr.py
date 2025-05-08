@@ -1,5 +1,8 @@
 import re
 import requests
+import urllib.parse
+from rdkit import Chem
+import pubchempy as pcp
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -7,14 +10,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
-import urllib.parse
-from rdkit import Chem
-import pubchempy as pcp
 from typing import List, Tuple
-from rdkit import Chem
-from bs4 import BeautifulSoup
-from io import BytesIO
-from pdfminer.high_level import extract_text
 
 
 def get_cid(query: str) -> str:
@@ -29,19 +25,18 @@ def get_cid(query: str) -> str:
     print(f"Found CID: {cid}")
     return cid
 
+
 def get_name_and_smiles(cid: str) -> tuple[str, str, str]:
     """Return the Record Title (generic name), IUPAC name, and SMILES from a given CID using PubChemPy."""
     compound = pcp.Compound.from_cid(cid)
-
     record_title = compound.synonyms[0] if compound.synonyms else "Unknown"
     iupac_name = compound.iupac_name or "Unknown"
     smiles = compound.isomeric_smiles or compound.canonical_smiles or "Unknown"
-
     return record_title, iupac_name, smiles
 
 
-def get_pictograms(cid_name: str) -> List[str]:
-    """Scrape GHS hazard pictograms from PubChem Safety and Hazards section."""
+def get_safety_info(cid_name: str) -> Tuple[List[str], List[str]]:
+    """Scrape GHS hazard statements and pictograms from PubChem Safety and Hazards section."""
     url = f"https://pubchem.ncbi.nlm.nih.gov/compound/{cid_name}"
     opts = Options()
     opts.add_argument("--headless=new")
@@ -49,38 +44,51 @@ def get_pictograms(cid_name: str) -> List[str]:
     driver = webdriver.Chrome(service=service, options=opts)
 
     try:
-        # Build URL from CID or compound name
         driver.get(url)
         print(f"[INFO] Loading {url}")
-
-        # Wait for page to fully load
         WebDriverWait(driver, 10).until(lambda d: d.execute_script("return document.readyState") == "complete")
         if "404" in driver.title:
             raise ValueError(f"Invalid CID or compound not found: {cid_name}")
 
-        # Check for Safety and Hazards section
-        section = None
-        elements = driver.find_elements(By.CSS_SELECTOR, "section#Safety-and-Hazards")
-        if elements:
-            section = elements[0]
-        else:
-            return ["No pictograms"]
+        section = driver.find_elements(By.CSS_SELECTOR, "section#Safety-and-Hazards")
+        if not section:
+            return ["No hazard statements"], ["No pictograms"]
 
-        # --- Extract pictograms ---
         pictograms = []
-        for el in section.find_elements(By.CSS_SELECTOR, "div.captioned.inline-block"):
+        for el in section[0].find_elements(By.CSS_SELECTOR, "div.captioned.inline-block"):
             caption = el.get_attribute("data-caption") or ""
             caption = caption.strip()
-            if re.fullmatch(r"[\d\s\-\/]+", caption):
-                continue
-            if any(char.isdigit() for char in caption):
+            if re.fullmatch(r"[\d\s\-\/]+", caption) or any(char.isdigit() for char in caption):
                 continue
             if caption:
                 pictograms.append(caption)
         if not pictograms:
             pictograms.append("No pictograms")
 
-        return pictograms
+        statements = []
+        def extract_statements(tag_selector: str) -> List[str]:
+            found = []
+            for tag in section[0].find_elements(By.CSS_SELECTOR, tag_selector):
+                text = tag.text.strip()
+                if re.match(r"H\d{3}", text):
+                    found.append(text)
+            return found
+
+        statements = extract_statements("p")
+        if not statements:
+            statements = extract_statements("div")
+
+        if not statements:
+            statements = ["No hazard statements"]
+
+        unique_statements = []
+        seen = set()
+        for s in statements:
+            if s not in seen:
+                seen.add(s)
+                unique_statements.append(s)
+
+        return unique_statements, pictograms
 
     finally:
         driver.quit()
@@ -94,9 +102,8 @@ def classify_acid_base(name: str, iupac_name: str, smiles: str, ghs_statements: 
 
     result = []
 
-    # --- Checks for Name, IUPAC, GHS Statements ---
+    # Checks for Name, IUPAC, GHS Statements
     full_name = name + " " + iupac_name
-
     if any("H290" in stmt or "corrosive to metals" in stmt.lower() for stmt in ghs_statements):
         result.append("Acid/Base (from GHS H290)")
 
@@ -109,13 +116,7 @@ def classify_acid_base(name: str, iupac_name: str, smiles: str, ghs_statements: 
     if name.endswith("ide") or iupac_name.endswith("ide"):
         result.append("Possibly base (from suffix 'ide')")
 
-    if any(group in smiles_upper for group in ["COOH", "C(=O)OH", "SO3H"]):
-        result.append("Acid (from SMILES text)")
-
-    if any(group in smiles_upper for group in ["NH2", "NH3", "NH", "OH"]) and "COOH" not in smiles_upper:
-        result.append("Base (from SMILES text)")
-
-    # --- Substructure Matching with SMARTS (RDKit) ---
+    # Substructure Matching with SMARTS (RDKit)
     acid_smarts = {
         "Carboxylic acid": "[CX3](=O)[OX2H1]",  # COOH
         "Sulfonic acid": "S(=O)(=O)[OH]",       # SO3H
@@ -123,7 +124,7 @@ def classify_acid_base(name: str, iupac_name: str, smiles: str, ghs_statements: 
     }
 
     base_smarts = {
-        "Ammonia":        "[NX3;H3]",            # NH3
+        "Ammonia": "[NX3;H3]",                   # NH3
         "Amide": "[NX3][CX3](=O)[#6]",
         "Urea-like": "[NX3][CX3](=O)[NX3]",
         "Primary amine": "[NX3;H2][CX4]",        
@@ -150,7 +151,25 @@ def classify_acid_base(name: str, iupac_name: str, smiles: str, ghs_statements: 
 
     return " | ".join(result)
 
-from typing import List, Tuple
+
+def extract_classification(description: str) -> str:
+    """Simplify acid/base classification from descriptive string."""
+    desc_lower = description.lower()
+    if "acid" in desc_lower and "base" in desc_lower:
+        return "Both"
+    elif "acid" in desc_lower:
+        return "Acid"
+    elif "base" in desc_lower:
+        return "Base"
+    else:
+        return "Unknown"
+    
+
+from bs4 import BeautifulSoup
+import requests
+from io import BytesIO
+from pdfminer.high_level import extract_text
+import re
 
 class SDSLookupError(Exception):
     """Custom exception for SDS lookup failures."""
@@ -421,120 +440,121 @@ if __name__ == "__main__":
     main()
 
 
-def can_be_stored_together(products: List[Tuple[str, List[str], str, str, str]]) -> bool:
-    """
-    Checks if two chemical products can be stored together based on:
-    - Physical state
-    - GHS pictograms
-    - Acid/base classification (if applicable)
-    """
+
+def can_be_stored_together(products: list[tuple[str, list[str], str, str]]) -> bool:
+    """Checks if two products can be stored together based on pictograms, physical state, and acid/base classification."""
     if len(products) != 2:
         raise ValueError("Function supports comparison between exactly two products.")
 
-    name1, pictos1, state1, smiles1, iupac1 = products[0]
-    name2, pictos2, state2, smiles2, iupac2 = products[1]
+    name1, pictos1, state1, smiles1 = products[0]
+    name2, pictos2, state2, smiles2 = products[1]
 
-    # Standardize names and pictograms
     name1_lower = name1.lower()
     name2_lower = name2.lower()
-    pictos1_set = set(p.title() for p in pictos1)
-    pictos2_set = set(p.title() for p in pictos2)
+    pictos1_set = set([p.title() for p in pictos1])
+    pictos2_set = set([p.title() for p in pictos2])
 
-    # Print information about the products
-    print(f"[INFO] {name1} ({state1}) pictograms: {pictos1_set}")
-    print(f"[INFO] {name2} ({state2}) pictograms: {pictos2_set}")
+    print(f"[INFO] {name1} ({state1}) Pictograms: {pictos1_set}")
+    print(f"[INFO] {name2} ({state2}) Pictograms: {pictos2_set}")
 
-    # 🚫 Rule: Do not store a solid and a liquid together
     if state1 != state2:
         print(f"[ALERT] Incompatible physical states: {state1} and {state2}.")
         return False
 
-    # Compute acid/base classification
-    classification1 = classify_acid_base(name1, iupac1, smiles1, pictos1)
-    classification2 = classify_acid_base(name2, iupac2, smiles2, pictos2)
-
-    print(f"[INFO] Classification for {name1}: {classification1}")
-    print(f"[INFO] Classification for {name2}: {classification2}")
-
-    # ✅ Case: Same product — allowed unless special pictograms (e.g. explosive)
     if name1_lower == name2_lower:
         if "Explosive" in pictos1_set or "Compressed Gas" in pictos1_set:
-            print(f"[ALERT] {name1} has a pictogram requiring solitary storage.")
+            print(f"[ALERT] Explosive or compressed gas must be stored alone.")
             return False
         return True
 
-    # 🚫 Rule: Explosive or Compressed Gas must be stored alone
     for name, pictos in [(name1, pictos1_set), (name2, pictos2_set)]:
         if "Explosive" in pictos or "Compressed Gas" in pictos:
             print(f"[ALERT] {name} contains 'Explosive' or 'Compressed Gas' and must be stored alone.")
             return False
 
-    # 🚫 Known incompatibility rules based on pictograms (Oxidizer + Flammable, Corrosive + Flammable)
     incompatibles = [
-        {"Oxidizer", "Flammable"},  # Oxidizers should not be stored with Flammable substances
-        {"Corrosive", "Flammable"},  # Corrosive and Flammable substances are incompatible
+        {"Oxidizer", "Flammable"},
+        {"Corrosive", "Flammable"},
     ]
+
     for rule in incompatibles:
         if any(p in pictos1_set for p in rule) and any(p in pictos2_set for p in rule):
             if rule.issubset(pictos1_set) or rule.issubset(pictos2_set):
                 print(f"[CONFLICT] Incompatibility detected between '{name1}' and '{name2}' due to: {rule}")
                 return False
 
-    # 🚫 Rule: Acidic + Corrosive must not be stored with Acute Toxic or Health Hazard
-    acidic_corrosive_1 = "Acid" in classification1 and "Corrosive" in pictos1_set
-    acidic_corrosive_2 = "Acid" in classification2 and "Corrosive" in pictos2_set
+    # Acid/Base Classification using descriptive output
+    desc1 = classify_acid_base(name1, name1, smiles1, pictos1)
+    desc2 = classify_acid_base(name2, name2, smiles2, pictos2)
+
+    print(f"[INFO] Acid/Base classification for {name1}: {desc1}")
+    print(f"[INFO] Acid/Base classification for {name2}: {desc2}")
+
+    class1 = extract_classification(desc1)
+    class2 = extract_classification(desc2)
+
+    acidic_corrosive_1 = class1 == "Acid" and "Corrosive" in pictos1_set
+    acidic_corrosive_2 = class2 == "Acid" and "Corrosive" in pictos2_set
     toxic_or_health_1 = "Acute Toxic" in pictos1_set or "Health Hazard" in pictos1_set
     toxic_or_health_2 = "Acute Toxic" in pictos2_set or "Health Hazard" in pictos2_set
-    if (acidic_corrosive_1 and toxic_or_health_2) or (acidic_corrosive_2 and toxic_or_health_1):
-        print(f"[CONFLICT] Acidic and corrosive product cannot be stored with acute toxic or health hazard product.")
+
+    # Explicit check for corrosive and flammable conflict
+    if "Corrosive" in pictos1_set and "Flammable" in pictos2_set:
+        print(f"[CONFLICT] '{name1}' (Corrosive) should not be stored with '{name2}' (Flammable).")
+        return False
+    if "Flammable" in pictos1_set and "Corrosive" in pictos2_set:
+        print(f"[CONFLICT] '{name1}' (Flammable) should not be stored with '{name2}' (Corrosive).")
         return False
 
-    # 🚫 Acid + Base conflict (only if both classifications are known)
-    if "Unknown" not in (classification1, classification2):
-        if "Acid" in classification1 and "Base" in classification2:
-            print(f"[CONFLICT] Acid '{name1}' should not be stored with base '{name2}'.")
-            return False
-        if "Base" in classification1 and "Acid" in classification2:
-            print(f"[CONFLICT] Base '{name1}' should not be stored with acid '{name2}'.")
-            return False
-    else:
-        print(f"[INFO] Acid/base classification unknown for one or both products. Skipping acid/base checks.")
+    # Handle the case where one or both compounds are classified as "Unknown"
+    if class1 == "Unknown" or class2 == "Unknown":
+        print(f"[INFO] One or both compounds have an 'Unknown' classification, but safety hazards are still checked.")
+        return True
 
-    print("[INFO] Products may be stored together.")
+    if class1 == "Acid" and class2 == "Base":
+        print(f"[CONFLICT] Acidic '{name1}' should not be stored with basic '{name2}'.")
+        return False
+    if class1 == "Base" and class2 == "Acid":
+        print(f"[CONFLICT] Basic '{name1}' should not be stored with acidic '{name2}'.")
+        return False
+
     return True
 
-def main():
-    print("🔍 Enter two compound names or SMILES strings to check storage compatibility.\n")
 
+def main():
+    print("🔍 Enter two compound names or SMILES strings to check compatibility.\n")
+    
+    # Get user input
+    query1 = input("Enter first compound name or SMILES: ").strip()
+    query2 = input("Enter second compound name or SMILES: ").strip()
+
+    product_queries = [query1, query2]
     products = []
 
-    # Loop to collect data for 2 products
-    for i in range(2):
-        query = input(f"Enter compound #{i + 1} name or SMILES: ").strip()
-        physical_state = input(f"Enter the physical state of the compound (solid or liquid): ").strip().lower()
-
+    # Process each product query
+    for query in product_queries:
         try:
-            # Get CID for the compound
-            cid = get_cid(query)  # Get the CID for the compound
-            # Get the compound name, IUPAC name, SMILES from PubChem
-            compound_name, iupac_name, smiles = get_name_and_smiles(cid)  
-            # Get the pictograms from PubChem
-            pictograms = get_pictograms(cid)  
+            cid = get_cid(query)  # Get the PubChem CID for the compound
+            name, iupac, smiles = get_name_and_smiles(cid)  # Get the name, IUPAC, and SMILES string
+            statements, pictos = get_safety_info(cid)  # Get safety info (hazard statements, pictograms)
+            
+            # Now ask for the physical state (outside of the try-except block)
+            state = input(f"Enter the physical state of '{name}' (solid or liquid): ").strip().lower()
+            
+            # Append all four data points: name, pictograms, state, and SMILES
+            products.append((name, pictos, state, smiles))
 
-            # Store product information
-            products.append((compound_name, pictograms, physical_state, smiles, iupac_name))
-
-            # Print classification for the compound
-            classification = classify_acid_base(compound_name, iupac_name, smiles, pictograms)
-            print(f"[INFO] Classification for {compound_name}: {classification}")
-
+            # Classify the compound as an acid or base
+            classification = classify_acid_base(name, name, "", pictos)
+            print(f"[INFO] Classification for {name}: {classification}")
+        
         except Exception as e:
             print(f"[ERROR] Problem with '{query}': {e}")
-            continue
+            continue  # Skip to the next product in case of error
 
+    # If both products are collected, check compatibility
     if len(products) == 2:
         print(f"\n[INFO] All safety data collected.")
-        # Check if the two products can be stored together
         if can_be_stored_together(products):
             print("✅ These products can be stored together.")
         else:
@@ -542,6 +562,5 @@ def main():
     else:
         print("❌ Could not retrieve safety data for both products.")
 
-# 👇 This line ensures your main logic runs when the script is executed
 if __name__ == "__main__":
     main()
