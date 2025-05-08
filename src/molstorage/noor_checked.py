@@ -54,6 +54,7 @@ def get_fisher_sds_link(chemical_name):
 
     raise SDSLookupError(f"No SDS link found for chemical: '{chemical_name}'")
 
+
 class SDSExtractionError(Exception):
     """Custom exception for SDS section extraction failures."""
     pass
@@ -76,7 +77,6 @@ def extract_sds_sections(pdf_url):
         - section_7_text (list): List of lines from Section 7.
         - section_10_text (list): List of lines from Section 10.
         - hazard_dict (dict): Dictionary mapping hazards to their categories from Section 2.
-        - incompatible_mat (dict): Dictionary with incompatible materials from Section 10.
 
     Raises:
     - ValueError: If the PDF URL is invalid or empty.
@@ -100,7 +100,6 @@ def extract_sds_sections(pdf_url):
     # Step 2: Extract text from pdf
     try:
         pdf_file = BytesIO(response.content)
-        text = extract_text(pdf_file)
     except Exception as e:
         raise SDSExtractionError(f"Failed to extract text from PDF: {e}") from e
 
@@ -127,6 +126,7 @@ def extract_sds_sections(pdf_url):
 
         if section_7:
             section_7_text.append(line) # Every line in section 7 gets appended
+            
 
 
     # Extract section 10: Stability and reactivity
@@ -218,48 +218,98 @@ def extract_sds_sections(pdf_url):
            hazard_dict[hazard] = categories[i]
            i += 1
            j += 1
-           
-           
-        # Get the incompatible materials from section 10 (usually always here)
-        key = "Incompatible Materials"
-        for i, line in enumerate(section_10_text):
-            if line.strip().lower() == key.lower():
-                next_line = section_10_text[i + 2].strip()
-                
-                # Split into a list
-                if next_line:
-                    materials = [m.strip().capitalize() for m in re.split(r',\s*', next_line)]
-                    incompatible_mat = {key: materials}
-                    
-                
             
-    return section_7_text, section_10_text, hazard_dict, incompatible_mat
+    return section_7_text, section_10_text, hazard_dict
+
+
+def get_incompatible_materials(section_10_text: list):
+    
+    key = "Incompatible Materials"
+    for i, line in enumerate(section_10_text):
+        if line.strip().lower() == key.lower():
+            next_line = section_10_text[i + 2].strip()
+            
+            if next_line:
+                # Split into a clean list
+                materials = [m.strip().capitalize() for m in re.split(r',\s*', next_line)]
+    
+    incomp_materials = {key: materials}
+    return incomp_materials
+
+
+def handling_storage_section_7(section_7_text):
+    
+    # Step 1: Find the indices of the first and second empty lines
+    empty_indices = [i for i, line in enumerate(section_7_text) if not line.strip()]
+    if len(empty_indices) < 2:
+        raise ValueError("Not enough empty lines to split handling and storage.")
+
+    handling_start = empty_indices[0] + 1
+    handling_end = empty_indices[1]
+
+    # Step 2: Extract handling and storage text blocks
+    handling_lines = section_7_text[handling_start:handling_end]
+    storage_lines = section_7_text[handling_end + 1:]
+
+    # Step 3: Join lines and split by period
+    handling_text = " ".join(handling_lines)
+    storage_text = " ".join(storage_lines)
+
+    # Step 4: Clean and split into phrases
+    handling_sentences = [s.strip() for s in handling_text.split('.') if s.strip()]
+    storage_sentences = [s.strip() for s in storage_text.split('.') if s.strip()]
+    
+    # Step 5: For storage, stop at "Incompatible Materials"
+    storage_sentences = []
+    for sentence in storage_text.split('.'):
+        clean = sentence.strip()
+        if not clean:
+            continue
+        if "incompatible materials" in clean.lower():
+            break
+        storage_sentences.append(clean)
+
+
+    return {
+        "Handling": handling_sentences,
+        "Storage": storage_sentences
+    }
+    
+    
+    
+##################################
 
 def main():
     # Sample PDF URL (replace this with a valid PDF URL to test)
-    pdf_url = "https://www.fishersci.com/store/msds?partNumber=S181100&productDescription=silver-nitrate-cert-acs-g&vendorId=VN00033897&keyword=true&countryCode=US&language=en"
+    pdf_url = "https://www.fishersci.com/store/msds?partNumber=D3720&productDescription=methylene-chlor-cert-acs-l&vendorId=VN00033897&keyword=true&countryCode=US&language=en"
+
     try:
-        section_7_text, section_10_text, hazard_dict, incompatible_mat = extract_sds_sections(pdf_url)
+        section_7_text, section_10_text, hazard_dict = extract_sds_sections(pdf_url)
 
-        # Output extracted sections
-        print("\n[INFO] Extracted Section 7")
-        for line in section_7_text:
-            print(line)
-
-        print("\n[INFO] Extracted Section 10")
-        for line in section_10_text:
-            print(line)
-
-        print("\n[INFO] Extracted Section 2")
+        print("\n[INFO] Extracted Section 2: hazards categories)")
         for hazard, category in hazard_dict.items():
-            print(f"{hazard}: {category}")
-            print()
+            print(f"- {hazard}: {category}")
             
-        for key, materials in incompatible_mat.items():
+        print()
+        
+        print("\n[INFO] Extracted Section 10: incompatible materials)")
+        result = get_incompatible_materials(section_10_text)
+        for key, materials in result.items():
             print(f"{key}:")
             for material in materials:
                 print(f"- {material}")
-    
+        
+        print() 
+        
+        print("\n[INFO] Extracted Section 7: Handling and Storage)")
+        results_2 = handling_storage_section_7(section_7_text)
+        for title, info in results_2.items():
+            print(f"{title}:")
+            for item in info:
+                print(f"- {item}")
+          
+        
+        
     except ValueError as e:
         print(f"[ERROR] {e}")
     except requests.exceptions.RequestException as e:
@@ -268,6 +318,7 @@ def main():
         print(f"[ERROR] {e}")
     except Exception as e:
         print(f"[ERROR] An unexpected error occurred: {e}")
+
 
 if __name__ == "__main__":
     main()
