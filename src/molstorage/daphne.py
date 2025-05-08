@@ -113,7 +113,6 @@ def get_safety_info(cid_name: str) -> Tuple[List[str], List[str]]:
         driver.quit()
 
 
-
 def classify_acid_base(name: str, iupac_name: str, smiles: str, ghs_statements: list[str]) -> str:
     """Classify compound as acid or base based on name, IUPAC, SMILES structure, and GHS hazard statements."""
     name = name.lower()
@@ -136,12 +135,6 @@ def classify_acid_base(name: str, iupac_name: str, smiles: str, ghs_statements: 
 
     if name.endswith("ide") or iupac_name.endswith("ide"):
         result.append("Possibly base (from suffix 'ide')")
-
-    if any(group in smiles_upper for group in ["COOH", "C(=O)OH", "SO3H"]):
-        result.append("Acid (from SMILES text)")
-
-    if any(group in smiles_upper for group in ["NH2", "NH3", "NH", "OH"]) and "COOH" not in smiles_upper:
-        result.append("Base (from SMILES text)")
 
     # --- Substructure Matching with SMARTS (RDKit) ---
     acid_smarts = {
