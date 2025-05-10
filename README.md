@@ -1,8 +1,8 @@
-## 🧪 Package description
+<p align="center">
+  # MolStorage
+</p>
 
-molstorage
-
-Developpers:
+## Developpers
 - Verstraete Noor, student in chemistry and chemical engineering at EPFL (Switzerland), email: noor.verstraete@epfl.ch  
 [![jhc github](https://img.shields.io/badge/GitHub-noorvrst-181717.svg?style=flat&logo=github)](https://github.com/noorvrst)
 
