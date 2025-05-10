@@ -26,11 +26,11 @@ conda activate molstorage_env
 </pre>
 
 ## Run tests and coverage
-
 <pre>
 <code>
 (conda_env) $ pip install tox
 (conda_env) $ tox
+</code>
 </pre>
 
 ## Developpers
@@ -39,7 +39,6 @@ conda activate molstorage_env
 
 - Mercier Charlotte, student in chemistry and chemical engineering at EPFL (Switzerland), email: charlotte.mercier@epfl.ch  
 [![jhc github](https://img.shields.io/badge/GitHub-chacha333%20create-181717.svg?style=flat&logo=github)](https://github.com/chacha333-create)
-
 
 - Delacou Daphné, student in chemistry and chemical engineering at EPFL (Switzerland), email: daphne.delacou@epfl.ch  
 [![jhc github](https://img.shields.io/badge/GitHub-ddelacou-181717.svg?style=flat&logo=github)](https://github.com/ddelacou)
