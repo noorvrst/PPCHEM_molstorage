@@ -4,13 +4,34 @@ A simple tool to help students analyze and understand the safety risks of differ
 
 ## How to use it?
 ## How to install it?
-
+1. Create and activate a new environment (another name can be given).
 <pre>
 <code>
-pip install git+https://github.com/yourusername/molstorage.git
+conda create -n molstorage_env python=3.10 
 </code>
 </pre>
 
+<pre>
+<code>
+conda activate molstorage_env
+</code>
+</pre>
+
+
+2. Pip install the package by copying this into your command line.
+<pre>
+<code>
+(molstorage_env) $ pip install git+https://github.com/noorvrst/PPCHEM_project_repository.git
+</code>
+</pre>
+
+## Run tests and coverage
+
+<pre>
+<code>
+(conda_env) $ pip install tox
+(conda_env) $ tox
+</pre>
 
 ## Developpers
 - Verstraete Noor, student in chemistry and chemical engineering at EPFL (Switzerland), email: noor.verstraete@epfl.ch  
