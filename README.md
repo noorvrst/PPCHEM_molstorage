@@ -2,8 +2,8 @@
 
 A simple tool to help students analyze and understand the safety risks of different molecules and their proper storage.
 
-## How to use it?
-## How to install it?
+## How to Use It
+## How to Install It
 1. Create and activate a new environment (another name can be given).
 <pre>
 <code>
@@ -25,13 +25,15 @@ conda activate molstorage_env
 </code>
 </pre>
 
-## Run tests and coverage
+## Run Tests and Coverage
 <pre>
 <code>
 (conda_env) $ pip install tox
 (conda_env) $ tox
 </code>
 </pre>
+
+## How to Use the Streamlit Web Application
 
 ## Developpers
 - Verstraete Noor, student in chemistry and chemical engineering at EPFL (Switzerland), email: noor.verstraete@epfl.ch  
