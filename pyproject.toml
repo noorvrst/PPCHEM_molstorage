@@ -7,13 +7,19 @@ name = "molstorage"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {file = "LICENSE"}
-description = "Storage of chemical based on their properties and interactions with eachother."
+description = "Storage of chemicals based on their properties and interactions with each other."
 dependencies = [
-    # "rdkit",
+    "rdkit",  # For cheminformatics
+    "requests",  # For making HTTP requests
+    "selenium",  # For automating web browser interactions
+    "webdriver-manager",  # For managing WebDriver binaries
+    "pubchempy",  # For interacting with PubChem API
+    "typing-extensions",  # For type annotations (use only if < Python 3.9)
 ]
 authors = [
-    {name = "Delacou Daphné", email = "daphne.delacou@epfl.ch"}, {name = "Mercier Charlotte", email = "charlotte.mercier@epfl.ch"},
-    {name = "Verstraete Noor", email = "noor.verstraete@epfl.ch"
+    {name = "Delacou Daphné", email = "daphne.delacou@epfl.ch"},
+    {name = "Mercier Charlotte", email = "charlotte.mercier@epfl.ch"},
+    {name = "Verstraete Noor", email = "noor.verstraete@epfl.ch"},
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",

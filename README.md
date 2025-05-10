@@ -3,6 +3,7 @@
 A simple tool to help students analyze and understand the safety risks of different molecules and their proper storage.
 
 ## How to use it?
+## How to install it?
 
 <pre>
 <code>
