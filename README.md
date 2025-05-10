@@ -1,6 +1,4 @@
-<p align="center">
-  # MolStorage
-</p>
+<h1 align="center">MolStorage</h1>
 
 ## Developpers
 - Verstraete Noor, student in chemistry and chemical engineering at EPFL (Switzerland), email: noor.verstraete@epfl.ch  
