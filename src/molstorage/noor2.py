@@ -39,17 +39,17 @@ def separate_section10_per_title(section,titles)->dict:
                 start_of_info_index = section.index(title)+len(title)
                 end_of_info_index = section.index(titles10[i + 1])
                 info = section[start_of_info_index:end_of_info_index]
-                dictio[title] = info.replace("_","").replace("\n","")
+                # creation of dictionary, eliminating as much as possible redundant information (recurring phrases indicating absence of specific information)
+                dictio[title] = info.replace("_","").replace("\n","").replace("Revision Date","").replace("None known, based on information available","-").replace("Stable under normal conditions.","-").replace("Hazardous polymerization does not occur.","-").replace("None under normal processing.","-").replace("None under normal use conditions","-").replace("Incompatible products.","-").replace("Excess heat.","-")
         else:
             if title in section:
                 start_of_info_index = section.index(title)+len(title)
                 info = section[start_of_info_index:]
-                dictio[title] = info.replace("_","").replace("\n","")
+                dictio[title] = info.replace("_","").replace("\n","").replace("Revision Date","").replace("None under normal processing.","- ")
     return dictio
 
-def main()->None:
-    chemical1 = input("Enter first chemical name: ")
-    chemical2 = input("Enter second chemical name: ")
+def compare_sections(chemical1,chemical2)->dict:
+    # you input 2 chemicals and it returns a dictionary relating their section 10 per subsection
     sds_link1= get_fisher_sds_link(chemical1)
     sds_link2= get_fisher_sds_link(chemical2)
     section7, section10_1 = extract_sds_sections(sds_link1)    
@@ -59,6 +59,12 @@ def main()->None:
     dictio_12 = {}
     for item in dictio_1:
         dictio_12[dictio_1[item]]=dictio_2[item]
+    return dictio_12
+
+def main()->None:
+    chemical1 = input("Enter first chemical name: ")
+    chemical2 = input("Enter second chemical name: ")
+    dictio_12 = compare_sections(chemical1,chemical2)
     i = 0
     for key,value in dictio_12.items():
         print(f"\n{titles10[i]}")
