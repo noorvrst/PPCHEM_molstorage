@@ -59,8 +59,11 @@ def main()->None:
     dictio_12 = {}
     for item in dictio_1:
         dictio_12[dictio_1[item]]=dictio_2[item]
+    i = 0
     for key,value in dictio_12.items():
-        print(f"\n{chemical1}: {key} \n{chemical2}: {value}\n")
+        print(f"\n{titles10[i]}")
+        print(f"{chemical1}: {key} \n{chemical2}: {value}")
+        i += 1
 
 if __name__=="__main__":
     main()
