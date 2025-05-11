@@ -276,6 +276,7 @@ def handling_storage_section_7(section_7_text):
     }
     
 def extract_all_sections(pdf_url):
+    # permet de mettre les sections dans un autre fichier (noor2.py par exemple)
     section_7_text, section_10_text, hazard_dict = extract_sds_sections(pdf_url)
     return section_7_text, section_10_text, hazard_dict
     
