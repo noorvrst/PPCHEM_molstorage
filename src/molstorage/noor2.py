@@ -54,8 +54,8 @@ def main()->None:
     sds_link2= get_fisher_sds_link(chemical2)
     section7, section10_1 = extract_sds_sections(sds_link1)    
     section7, section10_2 = extract_sds_sections(sds_link2)  
-    dictio_1=separate_section_per_title(section10_1,titles10)
-    dictio_2=separate_section_per_title(section10_2,titles10)
+    dictio_1=separate_section10_per_title(section10_1,titles10)
+    dictio_2=separate_section10_per_title(section10_2,titles10)
     dictio_12 = {}
     for item in dictio_1:
         dictio_12[dictio_1[item]]=dictio_2[item]
