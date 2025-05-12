@@ -21,7 +21,7 @@ conda activate molstorage_env
 2. Pip install the package by copying this into your command line.
 <pre>
 <code>
-(molstorage_env) $ pip install git+https://github.com/noorvrst/PPCHEM_project_repository.git
+(molstorage_env) $ pip install git+https://github.com/noorvrst/PPCHEM_molstorage.git
 </code>
 </pre>
 
