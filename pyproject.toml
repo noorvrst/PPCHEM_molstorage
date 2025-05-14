@@ -11,8 +11,6 @@ description = "Storage of chemicals based on their properties and interactions w
 dependencies = [
     "rdkit",  # For cheminformatics
     "requests",  # For making HTTP requests
-    "selenium",  # For automating web browser interactions
-    "webdriver-manager",  # For managing WebDriver binaries
     "pubchempy",  # For interacting with PubChem API
     "typing-extensions",  # For type annotations (use only if < Python 3.9)
 ]
@@ -71,3 +69,6 @@ omit = [
 exclude_also = [
     "if __name__ == .__main__.:",
 ]
+
+[tool.mypy]
+ignore_missing_imports = true
