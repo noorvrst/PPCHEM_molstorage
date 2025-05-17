@@ -2,7 +2,8 @@
 
 A simple tool to help students analyze and understand the safety risks of different molecules and their proper storage.
 
-## How to Use It
+## How to Use It 
+
 ## How to Install It
 1. Create and activate a new environment (another name can be given).
 <pre>
@@ -34,6 +35,14 @@ conda activate molstorage_env
 </pre>
 
 ## How to Use the Streamlit Web Application
+After installing, create a new file and make sure the environment molstorage_env is activated. By running the following code, a streamlit application will launch in your browser.
+
+```python
+import molstorage
+
+molstorage.App.run()
+```
+
 
 ## Developpers
 - Verstraete Noor, student in chemistry and chemical engineering at EPFL (Switzerland), email: noor.verstraete@epfl.ch
