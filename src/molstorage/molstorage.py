@@ -2,9 +2,10 @@ import re
 import json
 import requests
 from rdkit import Chem
-import pubchempy as pcp
+import pubchempy as pcp # type: ignore
 from rdkit import Chem
 from typing import Optional, List, Dict, Any, Union, Tuple
+import math
 
 def get_compound_safety_data(compound_name: str, debug: bool = False) -> Tuple[str, List[str], List[str]]:
     """
@@ -106,8 +107,8 @@ def get_compound_safety_data(compound_name: str, debug: bool = False) -> Tuple[s
         if debug:
             print(f"Unexpected error: {str(e)}")
         return "", [], []
-
-
+    
+    
 def get_name_and_smiles(cid: str) -> Tuple[str, str, str]:
     """Returns the Record Title (generic name), IUPAC name, and SMILES from a given CID using PubChemPy.
 
@@ -194,6 +195,148 @@ def classify_acid_base(name: str, iupac_name: str, smiles: str, ghs_statements: 
     
     return acid_base_class
 
+def get_mp_bp(compound_name: str) -> Tuple[Optional[float], Optional[float], Optional[float], Optional[float]]:
+    """
+    Given the name of a chemical compound, fetch its melting and boiling points 
+    from PubChem in both Celsius and Fahrenheit, and return their average values.
+
+    Args:
+        compound_name (str): The name of the compound (e.g., "water", "ethanol").
+
+    Returns:
+        Tuple containing:
+            - avg_melting_point_celsius (float or None): Average melting point in °C, if available.
+            - avg_boiling_point_celsius (float or None): Average boiling point in °C, if available.
+            - avg_melting_point_fahrenheit (float or None): Average melting point in °F, if available.
+            - avg_boiling_point_fahrenheit (float or None): Average boiling point in °F, if available.
+
+        Returns None values for any temperatures that could not be extracted.
+    """
+    
+    try:
+        compound = pcp.get_compounds(compound_name, 'name')[0]
+        cid = compound.cid
+    except IndexError:
+        return None, None, None, None
+
+    url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug_view/data/compound/{cid}/JSON"
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        data = response.json()
+    except:
+        return None, None, None, None
+
+    # Lists to store temperatures in Celsius and Fahrenheit
+    mp_celsius = []
+    bp_celsius = []
+    mp_fahrenheit = []
+    bp_fahrenheit = []
+
+    def search_sections(sections_list):
+        nonlocal mp_celsius, bp_celsius, mp_fahrenheit, bp_fahrenheit
+        for section in sections_list:
+            heading = section.get('TOCHeading', '')
+
+            if 'melting point' in heading.lower():
+                for info in section.get('Information', []):
+                    for markup in info.get('Value', {}).get('StringWithMarkup', []):
+                        text = markup.get('String', '')
+                        match = re.search(r'[-+]?\d+(?:\.\d+)?', text)
+                        if match:
+                            value = float(match.group(0))
+                            if '°C' in text:
+                                mp_celsius.append(value)
+                            elif '°F' in text:
+                                mp_fahrenheit.append(value)
+
+            elif 'boiling point' in heading.lower():
+                for info in section.get('Information', []):
+                    for markup in info.get('Value', {}).get('StringWithMarkup', []):
+                        text = markup.get('String', '')
+                        match = re.search(r'[-+]?\d+(?:\.\d+)?', text)
+                        if match:
+                            value = float(match.group(0))
+                            if '°C' in text:
+                                bp_celsius.append(value)
+                            elif '°F' in text:
+                                bp_fahrenheit.append(value)
+                                
+
+            # Recursive descent into subsections if available
+            if 'Section' in section:
+                search_sections(section['Section'])
+
+    if 'Record' in data and 'Section' in data['Record']:
+        search_sections(data['Record']['Section'])
+
+    # Calculate average temperatures in Celsius and Fahrenheit
+    avg_mp_celsius = math.ceil(sum(mp_celsius) / len(mp_celsius)) if mp_celsius else None
+    avg_bp_celsius = math.ceil(sum(bp_celsius) / len(bp_celsius)) if bp_celsius else None
+    avg_mp_fahrenheit = math.ceil(sum(mp_fahrenheit) / len(mp_fahrenheit)) if mp_fahrenheit else None
+    avg_bp_fahrenheit = math.ceil(sum(bp_fahrenheit) / len(bp_fahrenheit)) if bp_fahrenheit else None
+
+    return avg_mp_celsius, avg_bp_celsius, avg_mp_fahrenheit, avg_bp_fahrenheit
+
+def compound_state(mp_celsius: Optional[float], bp_celsius: Optional[float], mp_fahrenheit: Optional[float], bp_fahrenheit: Optional[float]) -> str:
+    """
+    Determine the physical state (solid, liquid, gas) of a compound at room temperature
+    based on its melting and boiling points in both Celsius and Fahrenheit.
+
+    The decision is first made using Celsius values, if available. If not, Fahrenheit values
+    are used. If neither provides a conclusive result, 'state unknown' is returned.
+
+    Args:
+        mp_celsius (Optional[float]): Melting point in degrees Celsius.
+        bp_celsius (Optional[float]): Boiling point in degrees Celsius.
+        mp_fahrenheit (Optional[float]): Melting point in degrees Fahrenheit.
+        bp_fahrenheit (Optional[float]): Boiling point in degrees Fahrenheit.
+
+    Returns:
+        str: The physical state at room temperature ("solid", "liquid", "gas", or "state unknown").
+    """
+    room_temp_celsius = 20  # Celsius
+    room_temp_fahrenheit = 68  # Fahrenheit
+
+    # Determine state based on average melting and boiling points in Celsius
+    if mp_celsius is not None and bp_celsius is not None:
+        if room_temp_celsius < mp_celsius:
+            state_celsius = 'solid'
+        elif mp_celsius <= room_temp_celsius < bp_celsius:
+            state_celsius = 'liquid'
+        elif room_temp_celsius >= bp_celsius:
+            state_celsius = 'gas'
+    elif mp_celsius is not None:
+        state_celsius = 'solid' if room_temp_celsius < mp_celsius else 'liquid'
+    elif bp_celsius is not None:
+        state_celsius = 'gas' if room_temp_celsius >= bp_celsius else 'liquid'
+    else:
+        state_celsius = 'unknown'
+
+        # Determine state based on average melting and boiling points in Fahrenheit
+    if mp_fahrenheit is not None and bp_fahrenheit is not None:
+        if room_temp_fahrenheit < mp_fahrenheit:
+            state_fahrenheit = 'solid'
+        elif mp_fahrenheit <= room_temp_fahrenheit < bp_fahrenheit:
+            state_fahrenheit = 'liquid'
+        elif room_temp_fahrenheit >= bp_fahrenheit:
+            state_fahrenheit = 'gas'
+    elif mp_fahrenheit is not None:
+        state_fahrenheit = 'solid' if room_temp_fahrenheit < mp_fahrenheit else 'liquid'
+    elif bp_fahrenheit is not None:
+        state_fahrenheit = 'gas' if room_temp_fahrenheit >= bp_fahrenheit else 'liquid'
+    else:
+        state_fahrenheit = 'unknown'
+
+    # Decide on state based on both Celsius and Fahrenheit data
+    if state_celsius != "unknown":
+        return state_celsius
+    elif state_fahrenheit != "unknown":
+        return state_fahrenheit
+    else:
+        return "state unknown"
+
+
 def prioritize_pictograms(pictogram_list: List[str]) -> List[str]:
     """Sort a list of GHS pictograms based on their hazard priority.
 
@@ -222,37 +365,42 @@ def prioritize_pictograms(pictogram_list: List[str]) -> List[str]:
     return sorted(pictogram_list, key=lambda x: pictogram_priority.get(x, 99))
 
 
-def is_compatible_picto_ab(existing_pictograms: List[str], new_pictograms: List[str], existing_acid_base_class: str, new_acid_base_class: str) -> bool:
+def is_chemically_compatible(
+    existing_pictograms: List[str],
+    new_pictograms: List[str],
+    existing_acid_base_class: str,
+    new_acid_base_class: str,
+    existing_state: str,
+    new_state: str,
+    group_name: str
+) -> bool:
     """
-    Determine if two chemicals are compatible for storage based on their GHS pictograms and acid/base classifications.
+    Determines whether two chemical compounds are chemically compatible for storage
+    based on pictograms, acid/base classification, physical state, and storage group.
 
-    Compatibility is checked using the following rules:
-    1. Acids and bases should not be stored together.
-    2. Certain pictograms are incompatible (e.g., Flammable and Oxidizer).
-    3. Acid corrosive is incompatible with a highly toxic or health hazardous chemical.
-
-    Args:
-        existing_pictograms (List[str]): GHS pictograms for the existing chemical.
-        new_pictograms (List[str]): GHS pictograms for the new chemical to be stored.
-        existing_acid_base_class (str): Acid/base classification for the existing chemical.
-        new_acid_base_class (str): Acid/base classification for the new chemical to be stored.
+    Parameters:
+    - existing_pictograms: List of hazard pictograms for the existing compound.
+    - new_pictograms: List of hazard pictograms for the compound to be added.
+    - existing_acid_base_class: Acid/base classification of the existing compound ('acid', 'base', etc.).
+    - new_acid_base_class: Acid/base classification of the new compound.
+    - existing_state: Physical state of the existing compound ('solid', 'liquid', 'gas').
+    - new_state: Physical state of the new compound.
+    - group_name: Name of the storage group (used for applying group-specific rules).
 
     Returns:
-        bool: True if the two chemicals are considered compatible, False otherwise.
+    - True if the compounds are compatible, False otherwise.
     """
-
     # Rule 1: Acid/base incompatibility
     if ("acid" in existing_acid_base_class and "base" in new_acid_base_class) or \
        ("base" in existing_acid_base_class and "acid" in new_acid_base_class):
         return False
 
-    # Rule 2: Pictogram incompatibilities
+    # Rule 2: Incompatible pictograms
     incompatible_pairs = [
         ("Flammable", "Oxidizer"),
         ("Flammable", "Corrosive"),
         ("Corrosive", "Oxidizer")
     ]
-
     for pic1 in existing_pictograms:
         for pic2 in new_pictograms:
             if (pic1, pic2) in incompatible_pairs or (pic2, pic1) in incompatible_pairs:
@@ -266,59 +414,86 @@ def is_compatible_picto_ab(existing_pictograms: List[str], new_pictograms: List[
         if "Acute Toxic" in existing_pictograms or "Health Hazard" in existing_pictograms:
             return False
 
+    # Rule 4: Solids and liquids not together
+    if (
+        (existing_state == "solid" and new_state == "liquid") or
+        (existing_state == "liquid" and new_state == "solid")
+    ):
+        return False
+
+    # Rule 5: Group-based restrictions (overrides compound-level checks)
+    if group_name:
+        group_name = group_name.lower()
+
+        if group_name == "oxidizer":
+            if "Flammable" in new_pictograms or "Corrosive" in new_pictograms:
+                return False
+        if group_name == "flammable" or group_name == "pyrophoric":
+            if "Oxidizer" in new_pictograms or "Corrosive" in new_pictograms:
+                return False
+        if "corrosive" in group_name or "irritant" in group_name:
+            if "Oxidizer" in new_pictograms or "Flammable" in new_pictograms:
+                return False
+        if "toxicity" in group_name or group_name == "cmr_stot":
+            if "acid" in new_acid_base_class:
+                return False
+        if "acid" in group_name:
+            if "Health Hazard" in new_pictograms or "Acute Toxic" in new_pictograms:
+                return False
+
     return True
 
-def chemsort_multiple_order(compounds: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
-    """
-    Sort a list of chemical compounds into appropriate storage groups based on GHS pictograms,
-    hazard statements, and acid/base classification.
+# Keep default_group(), default_group_gas(), and initialize_storage_groups() as before
+def default_group():
+    return {"solid": [], "liquid": []}
 
-    The sorting process involves:
-    1. Prioritizing compounds based on their most severe pictogram.
-    2. Assigning each compound to a compatible storage group using rules about pictogram and
-       acid/base incompatibilities.
-    3. Applying specific groupings for certain hazard types like flammables, corrosives,
-       oxidizers, and acute toxicity.
-    4. Handling special cases like nitric acid.
-    5. Ensuring chemical safety by grouping only compatible substances together.
+def default_group_gas():
+    return {"gas": []}
 
-    Args:
-        compounds (List[Dict[str, Any]]): A list of chemical compound dictionaries.
-            Each dictionary must include:
-                - "name" (str): Name of the compound.
-                - "sorted_pictograms" (List[str]): Pictograms sorted by priority.
-                - "hazard_statements" (List[str]): GHS hazard phrases or safety statements.
-                - "acid_base_class" (str): Classification as 'acid', 'base', or 'unknown'.
-
-    Returns:
-        Dict[str, List[Dict[str, Any]]]: A mapping of storage group names to lists of compatible compounds.
-    """
-
-    storage_groups: Dict[str, List[Dict[str, Any]]] = {
-        "none": [],
-        "hazardous_environment": [],
-        "acute_toxicity": [],
-        "cmr_stot": [],
-        "toxicity_2_3": [],
-        "acid_corrosive_1": [],
-        "acid_irritant": [],
-        "base_corrosive_1": [],
-        "base_irritant": [],
-        "pyrophoric": [],
-        "flammable": [],
-        "oxidizer": [],
-        "explosive": [],
-        "compressed_gas": [],
-        "base_corrosive_flammable": [],
-        "acid_corrosive_flammable": [],
-        "corrosive_flammable": [],
-        "oxidizer_flammable": [],
-        "base_oxidizer_corrosive": [],
-        "acid_oxidizer_corrosive": [],
-        "no_category": [],
-        "nitric_acid": []
+def initialize_storage_groups() -> Dict[str, Dict[str, List[Dict[str, Any]]]]:
+    return {
+        "none": default_group(),
+        "hazardous_environment": default_group(),
+        "acute_toxicity": default_group(),
+        "cmr_stot": default_group(),
+        "toxicity_2_3": default_group(),
+        "acid_corrosive_1": default_group(),
+        "acid_irritant": default_group(),
+        "base_corrosive_1": default_group(),
+        "base_irritant": default_group(),
+        "pyrophoric": default_group(),
+        "flammable": default_group(),
+        "oxidizer": default_group(),
+        "explosive": default_group(),
+        "compressed_gas": default_group_gas(),
+        "nitric_acid": default_group()
     }
 
+def chemsort_multiple_order_3(compounds: List[Dict[str, Any]], storage_groups: Dict[str, Dict[str, List[Dict[str, Any]]]]) -> Dict[str, Dict[str, List[Dict[str, Any]]]]:
+    """
+    Sorts a list of chemical compounds into appropriate storage groups based on 
+    GHS pictograms, hazard statements, physical state, and acid/base classification.
+
+    The function processes compounds by assigning them into predefined groups 
+    if they are compatible with it and the compounds in it.
+    If a compound does not any known group, it is either added to a matching 
+    custom group or a new custom group is created.
+
+    Parameters:
+        compounds (List[Dict[str, Any]]): 
+            A list of dictionaries where each dictionary represents a compound with keys like 
+            'name', 'sorted_pictograms', 'hazard_statements', 'acid_base_class', and 'state_room_temp'.
+        
+        storage_groups (Dict[str, Dict[str, List[Dict[str, Any]]]]): 
+            A dictionary representing existing storage groups. Each key is a group name, 
+            mapping to another dictionary with keys 'solid', 'liquid', and 'gas', each containing 
+            a list of compatible compounds.
+            Empty at firt use of the function.
+
+    Returns:
+        Dict[str, Dict[str, List[Dict[str, Any]]]]: 
+            Updated dictionary of storage groups with the compounds sorted into the appropriate categories.
+    """
     phrases_hazard = [
         "may cause genetic defects", "cancer", "may damage fertility", "causes damage to organs"
     ]
@@ -339,179 +514,132 @@ def chemsort_multiple_order(compounds: List[Dict[str, Any]]) -> Dict[str, List[D
     }
 
     def compound_priority(compound):
-        # Ensure 'sorted_pictograms' key exists, and default to empty list if not
-        pictograms = compound.get("sorted_pictograms", [])
-        if pictograms:
-            return pictogram_priority.get(pictograms[0], 100)
+        if compound["sorted_pictograms"]:
+            return pictogram_priority.get(compound["sorted_pictograms"][0], 100)
         return 100
 
-    # Ensure that each compound has 'sorted_pictograms', if not, assign an empty list
-    for compound in compounds:
-        if "sorted_pictograms" not in compound:
-            compound["sorted_pictograms"] = []
-
     compounds = sorted(compounds, key=compound_priority)
+
+    custom_group_counter = 1
+    custom_group_prefix = "custom_storage_"
+    custom_groups = [key for key in storage_groups if key.startswith(custom_group_prefix)]
+
+    def is_compatible_with_group(group_name, state_key, compound, group_dict=storage_groups):
+        compounds_in_group = group_dict[group_name][state_key]
+        if not compounds_in_group:
+            return is_chemically_compatible(
+                [],
+                compound["sorted_pictograms"],
+                "",
+                compound["acid_base_class"],
+                "",
+                compound["state_room_temp"],
+                group_name)
+        for existing in compounds_in_group:
+            if not is_chemically_compatible(
+                existing["sorted_pictograms"],
+                compound["sorted_pictograms"],
+                existing["acid_base_class"],
+                compound["acid_base_class"],
+                existing["state_room_temp"],
+                compound["state_room_temp"],
+                group_name
+            ):
+                return False
+        return True
+
 
     for compound in compounds:
         chemical = compound["name"]
         sorted_pictograms = compound["sorted_pictograms"]
         hazard_statements = compound["hazard_statements"]
-        acid_base_class = compound["acid_base_class"]
+        acid_base_class = compound["acid_base_class"].lower()
+        state = compound["state_room_temp"]
+        state_key = 'liquid' if 'liquid' in state else 'solid' if 'solid' in state else 'gas'
 
         all_statements = " ".join(hazard_statements).lower()
         sorted_successfully = False
 
-        def is_compatible_with_group(group_name):
-            for existing in storage_groups[group_name]:
-                if not is_compatible_picto_ab(
-                    existing["pictograms"],
-                    sorted_pictograms,
-                    existing["acid_base_class"],
-                    acid_base_class
-                ):
-                    return False
-            return True
-
-        i = 0
-        while not sorted_successfully and i < len(sorted_pictograms):
-            pictogram = sorted_pictograms[i]
+        if sorted_pictograms:
+            first_picto = sorted_pictograms[0]
 
             if chemical.lower() == "nitric acid":
-                storage_groups["nitric_acid"].append({
-                    "name": chemical,
-                    "pictograms": sorted_pictograms,
-                    "acid_base_class": acid_base_class
-                })
+                storage_groups["nitric_acid"][state_key].append(compound)
                 sorted_successfully = True
 
-            elif pictogram == "Compressed Gas":
-                storage_groups["compressed_gas"].append({
-                    "name": chemical,
-                    "pictograms": sorted_pictograms,
-                    "acid_base_class": acid_base_class
-                })
+            elif first_picto == "Compressed Gas":
+                storage_groups["compressed_gas"][state_key].append(compound)
                 sorted_successfully = True
 
-            elif pictogram == "Explosive":
-                storage_groups["explosive"].append({
-                    "name": chemical,
-                    "pictograms": sorted_pictograms,
-                    "acid_base_class": acid_base_class
-                })
+            elif first_picto == "Explosive":
+                storage_groups["explosive"][state_key].append(compound)
                 sorted_successfully = True
 
-            elif pictogram == "Oxidizer":
-                if "Flammable" in sorted_pictograms:
-                    storage_groups["oxidizer_flammable"].append({
-                        "name": chemical,
-                        "pictograms": sorted_pictograms,
-                        "acid_base_class": acid_base_class
-                    })
-                elif "Corrosive" in sorted_pictograms and "base" in acid_base_class:
-                    storage_groups["base_oxidizer_corrosive"].append({
-                        "name": chemical,
-                        "pictograms": sorted_pictograms,
-                        "acid_base_class": acid_base_class
-                    })
-                elif "Corrosive" in sorted_pictograms and "acid" in acid_base_class:
-                    storage_groups["acid_oxidizer_corrosive"].append({
-                        "name": chemical,
-                        "pictograms": sorted_pictograms,
-                        "acid_base_class": acid_base_class
-                    })
-                elif is_compatible_with_group("oxidizer"):
-                    storage_groups["oxidizer"].append({
-                        "name": chemical,
-                        "pictograms": sorted_pictograms,
-                        "acid_base_class": acid_base_class
-                    })
-                sorted_successfully = True
+            elif first_picto == "Oxidizer":
+                group = "oxidizer"
+                if is_compatible_with_group(group, state_key, compound):
+                    storage_groups["oxidizer"][state_key].append(compound)
+                    sorted_successfully = True
 
-            elif pictogram == "Flammable":
-                if "Corrosive" in sorted_pictograms and not ("acid" in acid_base_class or "base" in acid_base_class):
-                    storage_groups["corrosive_flammable"].append({
-                        "name": chemical,
-                        "pictograms": sorted_pictograms,
-                        "acid_base_class": acid_base_class
-                    })
-                elif "base" in acid_base_class and "Corrosive" in sorted_pictograms:
-                    storage_groups["base_corrosive_flammable"].append({
-                        "name": chemical,
-                        "pictograms": sorted_pictograms,
-                        "acid_base_class": acid_base_class
-                    })
-                elif "acid" in acid_base_class and "Corrosive" in sorted_pictograms:
-                    storage_groups["acid_corrosive_flammable"].append({
-                        "name": chemical,
-                        "pictograms": sorted_pictograms,
-                        "acid_base_class": acid_base_class
-                    })
-                else:
-                    group = "pyrophoric" if any(p in all_statements for p in phrases_flam) else "flammable"
-                    storage_groups[group].append({
-                        "name": chemical,
-                        "pictograms": sorted_pictograms,
-                        "acid_base_class": acid_base_class
-                    })
-                sorted_successfully = True
+            elif first_picto == "Flammable":
+                group = "pyrophoric" if any(p in all_statements for p in phrases_flam) else "flammable"
+                if is_compatible_with_group(group, state_key, compound):
+                    storage_groups[group][state_key].append(compound)
+                    sorted_successfully = True
 
-            elif pictogram == "Corrosive":
+            elif first_picto == "Corrosive":
                 is_base = "base" in acid_base_class
                 is_acid = "acid" in acid_base_class
                 is_severe = "causes severe skin burns and eye damage" in all_statements
-
+                group = None
                 if is_base:
                     group = "base_corrosive_1" if is_severe else "base_irritant"
-                    if is_compatible_with_group(group):
-                        storage_groups[group].append({
-                            "name": chemical,
-                            "pictograms": sorted_pictograms,
-                            "acid_base_class": acid_base_class
-                        })
-                        sorted_successfully = True
-
                 elif is_acid:
                     group = "acid_corrosive_1" if is_severe else "acid_irritant"
-                    if is_compatible_with_group(group):
-                        storage_groups[group].append({
-                            "name": chemical,
-                            "pictograms": sorted_pictograms,
-                            "acid_base_class": acid_base_class
-                        })
-                        sorted_successfully = True
+                if group and is_compatible_with_group(group, state_key, compound):
+                    storage_groups[group][state_key].append(compound)
+                    sorted_successfully = True
 
-            elif pictogram in ["Acute Toxic", "Health Hazard"]:
+            elif first_picto in ["Acute Toxic", "Health Hazard"]:
                 if "fatal" in all_statements or "toxic" in all_statements:
                     group = "acute_toxicity"
                 elif any(p in all_statements for p in phrases_hazard):
                     group = "cmr_stot"
                 else:
                     group = "toxicity_2_3"
-                if is_compatible_with_group(group):
-                    storage_groups[group].append({
-                        "name": chemical,
-                        "pictograms": sorted_pictograms,
-                        "acid_base_class": acid_base_class
-                    })
+                if is_compatible_with_group(group, state_key, compound):
+                    storage_groups[group][state_key].append(compound)
                     sorted_successfully = True
 
-            elif pictogram in ["Irritant", "Environmental Hazard"]:
+            elif first_picto in ["Irritant", "Environmental Hazard"]:
                 group = "hazardous_environment" if "toxic to aquatic life" in all_statements else "none"
-                if is_compatible_with_group(group):
-                    storage_groups[group].append({
-                        "name": chemical,
-                        "pictograms": sorted_pictograms,
-                        "acid_base_class": acid_base_class
-                    })
+                if is_compatible_with_group(group, state_key, compound):
+                    storage_groups[group][state_key].append(compound)
                     sorted_successfully = True
-
-            i += 1
 
         if not sorted_successfully:
-            storage_groups["no_category"].append({
-                "name": chemical,
-                "pictograms": sorted_pictograms,
-                "acid_base_class": acid_base_class
-            })
+            if not sorted_pictograms:
+                group = "none"
+                if is_compatible_with_group(group, state_key, compound):
+                    storage_groups[group][state_key].append(compound)
+                    sorted_successfully = True
+            else:
+                for custom_group in custom_groups:
+                    if is_compatible_with_group(custom_group, state_key, compound):
+                        storage_groups[custom_group][state_key].append(compound)
+                        sorted_successfully = True
+                        break
+
+        if not sorted_successfully:
+            while True:
+                new_group_name = f"{custom_group_prefix}{custom_group_counter}"
+                if new_group_name not in storage_groups:
+                    break
+                custom_group_counter += 1
+            custom_groups.append(new_group_name)
+            storage_groups[new_group_name] = (
+                {"liquid": [], "solid": [], "gas": []}
+            )
+            storage_groups[new_group_name][state_key].append(compound)
 
     return storage_groups
