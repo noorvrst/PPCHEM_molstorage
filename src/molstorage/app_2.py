@@ -1,5 +1,7 @@
 import streamlit as st
 import numpy as np
+import streamlit as st6
+
 
 from molstorage import (
     get_compound_safety_data,
@@ -14,7 +16,7 @@ from molstorage import (
 
 # Page config
 st.set_page_config(
-    page_title="ChemStorM - Chemical Storage Manager",
+    page_title="MolStorage - Chemical Storage Manager",
     page_icon=None,
     layout="wide"
 )
@@ -91,6 +93,10 @@ st.markdown("""
     .compound-name {
         font-weight: 600;
     }
+    .pictogram-container {
+        display: inline-block;
+        margin-right: 5px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -117,18 +123,38 @@ def remove_compound(compound):
     st.rerun()
 
 def display_pictogram(picto_name):
-    picto_map = {
-        "Explosive": "💥",
-        "Flammable": "🔥",
-        "Oxidizer": "🔆",
-        "Compressed Gas": "☁️",
-        "Corrosive": "🥈",
-        "Acute Toxic": "☠️",
-        "Health Hazard": "🫀",
-        "Irritant": "❗",
-        "Environmental Hazard": "🌍"
+    """
+    Display a chemical hazard pictogram based on its name.
+    
+    Args:
+        picto_name (str): The name of the pictogram to display
+        
+    Returns:
+        str: Empty string as the image is displayed via Streamlit
+    """
+    # Dictionary mapping pictogram names to their URLs
+    picto_urls = {
+        "Explosive": "https://www.unece.org/fileadmin/DAM/trans/danger/publi/ghs/pictograms/explos.gif",
+        "Flammable": "https://www.unece.org/fileadmin/DAM/trans/danger/publi/ghs/pictograms/flamme.gif",
+        "Oxidizer": "https://www.unece.org/fileadmin/DAM/trans/danger/publi/ghs/pictograms/rondflam.gif",
+        "Compressed Gas": "https://www.unece.org/fileadmin/DAM/trans/danger/publi/ghs/pictograms/bottle.gif",
+        "Corrosive": "https://www.unece.org/fileadmin/DAM/trans/danger/publi/ghs/pictograms/acid_red.gif",
+        "Acute Toxic": "https://www.unece.org/fileadmin/DAM/trans/danger/publi/ghs/pictograms/skull.gif",
+        "Health Hazard": "https://ehs.princeton.edu/sites/g/files/toruqf5671/files/styles/freeform_750w/public/media_files/HealthHazard.jpg?itok=idEHW1xP",
+        "Irritant": "https://www.unece.org/fileadmin/DAM/trans/danger/publi/ghs/pictograms/exclam.gif",
+        "Environmental Hazard": "https://www.unece.org/fileadmin/DAM/trans/danger/publi/ghs/pictograms/environ.gif"
     }
-    return picto_map.get(picto_name, "❓")
+    
+    # Default image URL if the pictogram is not found
+    default_url = "https://openclipart.org/image/800px/303955"
+    
+    # Generate a unique ID for this pictogram (useful for HTML references)
+    picto_id = f"picto_{picto_name.lower().replace(' ', '_')}_{id(picto_name)}"
+    
+    # Display the pictogram from URL
+    image_url = picto_urls.get(picto_name, default_url)
+    st.image(image_url, width=30)
+    return ""
 
 def process_compounds(compounds: list):
     if not compounds:
@@ -203,7 +229,9 @@ def display_compound_details(compound):
             abc_str = ", ".join(abc) if isinstance(abc, (list, tuple)) else abc
             st.markdown(f"**Acid/Base Class:** {abc_str}")
             if compound['sorted_pictograms']:
-                st.markdown("**Pictograms:** " + " ".join(display_pictogram(p) for p in compound['sorted_pictograms']))
+                st.markdown("**Pictograms:**")
+                for p in compound['sorted_pictograms']:
+                    display_pictogram(p)
             if compound['hazard_statements']:
                 st.markdown("**Hazard Statements:**")
                 for h in compound['hazard_statements']:
@@ -276,10 +304,16 @@ if st.session_state.processed_compounds:
                             if compounds:
                                 with st.expander(f"{state_key.capitalize()} ({len(compounds)})", expanded=False):
                                     for compound in compounds:
-                                        pictos = "".join(display_pictogram(p) for p in compound["sorted_pictograms"][:2])
-                                        btn_label = f"{pictos} {compound['name']}"
-                                        if st.button(btn_label, key=f"btn_{group_name}_{state_key}_{compound['name']}"):
-                                            add_to_displayed(compound)
+                                        # Création d'un conteneur pour les pictogrammes et le nom du composé
+                                        cols_picto = st.columns([0.3, 0.7])
+                                        with cols_picto[0]:
+                                            # Affichage des pictogrammes
+                                            for p in compound["sorted_pictograms"][:2]:
+                                                display_pictogram(p)
+                                        with cols_picto[1]:
+                                            # Affichage du nom du composé avec bouton
+                                            if st.button(compound['name'], key=f"btn_{group_name}_{state_key}_{compound['name']}"):
+                                                add_to_displayed(compound)
 
 # Compound details below storage groups
 if st.session_state.displayed_compounds:
@@ -287,26 +321,22 @@ if st.session_state.displayed_compounds:
     cols = st.columns(len(st.session_state.displayed_compounds))
     for i, compound in enumerate(st.session_state.displayed_compounds):
         with cols[i]:
-            pictos_str = "".join(display_pictogram(p) for p in compound['sorted_pictograms'][:2])
             remove_key = f"remove_display_{compound['name']}"
 
-            # Full styled box with compound name and details
-            st.markdown(f"""
-            <div class='detail-box'>
-                <div style='display: flex; justify-content: space-between; align-items: center;'>
-                    <p style='font-weight: bold; font-size: 16px; margin: 0;'>{compound['name']} {pictos_str}</p>
-                    <form action='' method='post'>
-                        <button name='{remove_key}' style='border: none; background: none; font-size: 16px; cursor: pointer;'>❌</button>
-                    </form>
-                </div>
-            """, unsafe_allow_html=True)
-
+            # En-tête avec nom du composé et bouton de suppression
+            col1, col2 = st.columns([0.8, 0.2])
+            with col1:
+                st.markdown(f"<p style='font-weight: bold; font-size: 16px; margin: 0;'>{compound['name']}</p>", unsafe_allow_html=True)
+            with col2:
+                if st.button("❌", key=remove_key):
+                    remove_from_displayed(compound['name'])
+                    st.rerun()
+            
+            # Affichage des pictogrammes
+            if compound['sorted_pictograms']:
+                st.markdown("**Pictograms:**")
+                for p in compound['sorted_pictograms'][:2]:
+                    display_pictogram(p)
+            
+            # Affichage des détails du composé
             display_compound_details(compound)
-
-            st.markdown("</div>", unsafe_allow_html=True)
-
-            # Handle removal after render (Streamlit limitation workaround)
-            if st.session_state.get(remove_key):
-                remove_from_displayed(compound['name'])
-                st.session_state.pop(remove_key)
-                st.rerun()

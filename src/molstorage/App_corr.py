@@ -14,7 +14,7 @@ from molstorage import (
 
 # Page config
 st.set_page_config(
-    page_title="ChemStorM - Chemical Storage Manager",
+    page_title="MolStorage - Chemical Storage Manager",
     page_icon=None,
     layout="wide"
 )
@@ -117,18 +117,38 @@ def remove_compound(compound):
     st.rerun()
 
 def display_pictogram(picto_name):
-    picto_map = {
-        "Explosive": "💥",
-        "Flammable": "🔥",
-        "Oxidizer": "🔆",
-        "Compressed Gas": "☁️",
-        "Corrosive": "🥈",
-        "Acute Toxic": "☠️",
-        "Health Hazard": "🫀",
-        "Irritant": "❗",
-        "Environmental Hazard": "🌍"
+    """
+    Display a chemical hazard pictogram based on its name.
+    
+    Args:
+        picto_name (str): The name of the pictogram to display
+        
+    Returns:
+        str: Empty string as the image is displayed via Streamlit
+    """
+    # Dictionary mapping pictogram names to their URLs
+    picto_urls = {
+        "Explosive": "https://www.unece.org/fileadmin/DAM/trans/danger/publi/ghs/pictograms/explos.gif",
+        "Flammable": "https://www.unece.org/fileadmin/DAM/trans/danger/publi/ghs/pictograms/flamme.gif",
+        "Oxidizer": "https://www.unece.org/fileadmin/DAM/trans/danger/publi/ghs/pictograms/rondflam.gif",
+        "Compressed Gas": "https://www.unece.org/fileadmin/DAM/trans/danger/publi/ghs/pictograms/bottle.gif",
+        "Corrosive": "https://www.unece.org/fileadmin/DAM/trans/danger/publi/ghs/pictograms/acid_red.gif",
+        "Acute Toxic": "https://www.unece.org/fileadmin/DAM/trans/danger/publi/ghs/pictograms/skull.gif",
+        "Health Hazard": "https://ehs.princeton.edu/sites/g/files/toruqf5671/files/styles/freeform_750w/public/media_files/HealthHazard.jpg?itok=idEHW1xP",
+        "Irritant": "https://www.unece.org/fileadmin/DAM/trans/danger/publi/ghs/pictograms/exclam.gif",
+        "Environmental Hazard": "https://www.unece.org/fileadmin/DAM/trans/danger/publi/ghs/pictograms/environ.gif"
     }
-    return picto_map.get(picto_name, "❓")
+    
+    # Default image URL if the pictogram is not found
+    default_url = "https://openclipart.org/image/800px/303955"
+    
+    # Generate a unique ID for this pictogram (useful for HTML references)
+    picto_id = f"picto_{picto_name.lower().replace(' ', '_')}_{id(picto_name)}"
+    
+    # Display the pictogram from URL
+    image_url = picto_urls.get(picto_name, default_url)
+    st.image(image_url, width=30)
+    return ""
 
 def process_compounds(compounds: list):
     if not compounds:
@@ -151,6 +171,13 @@ def process_compounds(compounds: list):
 
             name, iupac, smiles = get_name_and_smiles(cid)
             acid_base_class = classify_acid_base(name, iupac, smiles, hazards)
+            
+            # Ensure acid_base_class is a string for compatibility with chemsort_multiple_order_3
+            if isinstance(acid_base_class, (list, tuple)):
+                acid_base_class = ", ".join(acid_base_class)
+            elif acid_base_class is None:
+                acid_base_class = "unknown"
+                
             mp_c, bp_c, mp_f, bp_f = get_mp_bp(compound)
             state = compound_state(mp_c, bp_c, mp_f, bp_f)
             sorted_picto = prioritize_pictograms(pictos)
@@ -161,7 +188,7 @@ def process_compounds(compounds: list):
                 "smiles": smiles,
                 "sorted_pictograms": sorted_picto,
                 "hazard_statements": hazards,
-                "acid_base_class": acid_base_class,
+                "acid_base_class": acid_base_class,  # Now guaranteed to be a string
                 "state_room_temp": state,
                 "melting_point_c": mp_c,
                 "boiling_point_c": bp_c
@@ -171,8 +198,14 @@ def process_compounds(compounds: list):
     if results:
         st.session_state.processed_compounds.extend(results)
         # Update storage groups with all processed compounds, do NOT reset
-        updated_storage = chemsort_multiple_order_3(st.session_state.processed_compounds, st.session_state.storage_groups)
-        st.session_state.storage_groups = updated_storage
+        try:
+            updated_storage = chemsort_multiple_order_3(st.session_state.processed_compounds, st.session_state.storage_groups)
+            st.session_state.storage_groups = updated_storage
+        except Exception as e:
+            st.error(f"Error during compound sorting: {str(e)}")
+            # Since we already added the compounds to processed_compounds, return True
+            # to indicate partial success even though sorting failed
+            return True
         return True
     else:
         st.error("Failed to process new compounds.")
@@ -200,7 +233,13 @@ def display_compound_details(compound):
             st.markdown(f"**Boiling Point:** {bp if bp is not None else 'N/A'} °C")
         with cols[1]:
             abc = compound['acid_base_class']
-            abc_str = ", ".join(abc) if isinstance(abc, (list, tuple)) else abc
+            # Ensure the acid_base_class is displayed properly
+            if isinstance(abc, (list, tuple)):
+                abc_str = ", ".join(abc)
+            elif abc is None:
+                abc_str = "Unknown"
+            else:
+                abc_str = str(abc)
             st.markdown(f"**Acid/Base Class:** {abc_str}")
             if compound['sorted_pictograms']:
                 st.markdown("**Pictograms:** " + " ".join(display_pictogram(p) for p in compound['sorted_pictograms']))
@@ -211,7 +250,7 @@ def display_compound_details(compound):
 
 # --- Layout ---
 
-st.markdown("<h1 class='main-header'>ChemStor - Chemical Storage Manager</h1>", unsafe_allow_html=True)
+st.markdown("<h1 class='main-header'>MolStorage - Chemical Storage Manager</h1>", unsafe_allow_html=True)
 
 with st.sidebar:
     st.header("Input Compounds")
@@ -275,10 +314,12 @@ if st.session_state.processed_compounds:
                         for state_key, compounds in states.items():
                             if compounds:
                                 with st.expander(f"{state_key.capitalize()} ({len(compounds)})", expanded=False):
-                                    for compound in compounds:
+                                    for i, compound in enumerate(compounds):
+                                        # Create a unique key with index to avoid duplicates
+                                        button_key = f"btn_{group_name}_{state_key}_{compound['name']}_{i}"
                                         pictos = "".join(display_pictogram(p) for p in compound["sorted_pictograms"][:2])
                                         btn_label = f"{pictos} {compound['name']}"
-                                        if st.button(btn_label, key=f"btn_{group_name}_{state_key}_{compound['name']}"):
+                                        if st.button(btn_label, key=button_key):
                                             add_to_displayed(compound)
 
 # Compound details below storage groups
@@ -288,7 +329,7 @@ if st.session_state.displayed_compounds:
     for i, compound in enumerate(st.session_state.displayed_compounds):
         with cols[i]:
             pictos_str = "".join(display_pictogram(p) for p in compound['sorted_pictograms'][:2])
-            remove_key = f"remove_display_{compound['name']}"
+            remove_key = f"remove_display_{compound['name']}_{i}"  # Added index for uniqueness
 
             # Full styled box with compound name and details
             st.markdown(f"""
