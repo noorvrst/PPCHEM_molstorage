@@ -6,8 +6,6 @@ from rdkit import Chem
 from typing import Optional, List, Dict, Any, Union, Tuple
 import math
 
-from typing import List
-
 def get_compound_safety_data(compound_name: str, debug: bool = False) -> Tuple[str, List[str], List[str]]:
     """
     Fetches the PubChem CID, GHS pictograms, and hazard statements for a chemical compound.
@@ -127,9 +125,6 @@ def get_name_and_smiles(cid: str) -> Tuple[str, str, str]:
 
     return record_title, iupac_name, smiles
 
-
-from typing import List, Union, Tuple
-from rdkit import Chem
 
 def classify_acid_base(name: str, iupac_name: str, smiles: str, ghs_statements: List[str]) -> Union[str, Tuple[str, ...]]:
     """Classify a compound as 'acid', 'base', or 'neutral' based on name, IUPAC, SMILES structure,
@@ -389,8 +384,6 @@ def is_chemically_compatible(
     - new_pictograms: List of hazard pictograms for the compound to be added.
     - existing_acid_base_class: Acid/base classification of the existing compound ('acid', 'base', etc.).
     - new_acid_base_class: Acid/base classification of the new compound.
-    - existing_state: Physical state of the existing compound ('solid', 'liquid', 'gas').
-    - new_state: Physical state of the new compound.
     - group_name: Name of the storage group (used for applying group-specific rules).
 
     Returns:
@@ -444,10 +437,10 @@ def is_chemically_compatible(
 
 # Keep default_group(), default_group_gas(), and initialize_storage_groups() as before
 def default_group():
-    return {"solid": [], "liquid": [], "unknown": []}
+    return {"solid": [], "liquid": [], "unknown": [], "gas": []}
 
 def default_group_gas():
-    return {"gas": []}
+    return {"gas": [], "solid": [], "liquid": [], "unknown": []}
 
 def initialize_storage_groups() -> Dict[str, Dict[str, List[Dict[str, Any]]]]:
     return {
@@ -487,7 +480,7 @@ def chemsort_multiple_order_3(compounds: List[Dict[str, Any]], storage_groups: D
             A dictionary representing existing storage groups. Each key is a group name, 
             mapping to another dictionary with keys 'solid', 'liquid', and 'gas', each containing 
             a list of compatible compounds.
-            Empty at firt use of the function.
+            Empty at first use of the function.
 
     Returns:
         Dict[str, Dict[str, List[Dict[str, Any]]]]: 
@@ -524,35 +517,43 @@ def chemsort_multiple_order_3(compounds: List[Dict[str, Any]], storage_groups: D
     custom_groups = [key for key in storage_groups if key.startswith(custom_group_prefix)]
     
     def is_compatible_with_group(group_name, compound, group_dict=storage_groups):
-    # If all state lists are empty, treat it like an empty group
-        if all(not group_dict[group_name][state_key] for state_key in ["solid", "liquid", "unknown"]):
+        """
+        Determines if a compound is compatible with a storage group.
+        
+        Args:
+            group_name (str): Name of the storage group.
+            compound (Dict): Dictionary containing compound information.
+            group_dict (Dict): Dictionary containing all storage groups.
+            
+        Returns:
+            bool: True if compatible, False otherwise.
+        """
+        # Get the available state keys for this group
+        available_states = group_dict[group_name].keys()
+        
+        # Check if all available state lists are empty
+        if all(not group_dict[group_name][state_key] for state_key in available_states):
             return is_chemically_compatible(
-                [],
-                compound["sorted_pictograms"],
-                "",
-                compound["acid_base_class"],
-                "",
-                compound["state_room_temp"],
-                group_name
+                [],                           # existing_pictograms
+                compound["sorted_pictograms"], # new_pictograms
+                "",                           # existing_acid_base_class
+                compound["acid_base_class"],   # new_acid_base_class
+                group_name                    # group_name
             )
 
         # Otherwise, check compatibility against all existing compounds in all states
-        for state_key in ["solid", "liquid", "unknown"]:
+        for state_key in available_states:
             compounds_in_group = group_dict[group_name][state_key]
             for existing in compounds_in_group:
                 if not is_chemically_compatible(
-                    existing["sorted_pictograms"],
-                    compound["sorted_pictograms"],
-                    existing["acid_base_class"],
-                    compound["acid_base_class"],
-                    existing["state_room_temp"],
-                    compound["state_room_temp"],
-                    group_name
+                    existing["sorted_pictograms"],    # existing_pictograms
+                    compound["sorted_pictograms"],    # new_pictograms
+                    existing["acid_base_class"],      # existing_acid_base_class
+                    compound["acid_base_class"],      # new_acid_base_class
+                    group_name                        # group_name
                 ):
                     return False
         return True
-
-
 
     for compound in compounds:
         chemical = compound["name"]
@@ -642,15 +643,7 @@ def chemsort_multiple_order_3(compounds: List[Dict[str, Any]], storage_groups: D
                     break
                 custom_group_counter += 1
             custom_groups.append(new_group_name)
-            storage_groups[new_group_name] = (
-                {"liquid": [], "solid": [], "gas": []}
-            )
+            storage_groups[new_group_name] = default_group()
             storage_groups[new_group_name][state_key].append(compound)
 
     return storage_groups
-
-
-                
-
-
-
