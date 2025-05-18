@@ -1,9 +1,9 @@
-# src/chemstor/app.py
+# src/molstorage/app.py
 
 import os
 
 class App:
-    """A class to run the chemstor Streamlit interface."""
+    """A class to run the molstorage Streamlit interface."""
 
     def __init__(self) -> None:
         pass

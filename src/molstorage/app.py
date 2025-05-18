@@ -14,7 +14,7 @@ from molstorage import (
 
 # Page config
 st.set_page_config(
-    page_title="ChemStorM - Chemical Storage Manager",
+    page_title="MolStorage - Chemical Storage Manager",
     page_icon=None,
     layout="wide"
 )
@@ -117,18 +117,30 @@ def remove_compound(compound):
     st.rerun()
 
 def display_pictogram(picto_name):
-    picto_map = {
-        "Explosive": "💥",
-        "Flammable": "🔥",
-        "Oxidizer": "🔆",
-        "Compressed Gas": "☁️",
-        "Corrosive": "🥈",
-        "Acute Toxic": "☠️",
-        "Health Hazard": "🫀",
-        "Irritant": "❗",
-        "Environmental Hazard": "🌍"
+    """
+    Convert a pictogram name to a short text code.
+    
+    Args:
+        picto_name (str): The name of the pictogram
+        
+    Returns:
+        str: A short text code for the pictogram
+    """
+    # Dictionary mapping pictogram names to short text codes
+    picto_codes = {
+        "Explosive": "[Explosive]",
+        "Flammable": "[Flammable]",
+        "Oxidizer": "[Oxidizer]",
+        "Compressed Gas": "[Compressed Gas]",
+        "Corrosive": "[Corrosive]",
+        "Acute Toxic": "[Acute Toxic]",
+        "Health Hazard": "[Health Hazard]",
+        "Irritant": "[Irritant]",
+        "Environmental Hazard": "[Environmental Hazard]"
     }
-    return picto_map.get(picto_name, "❓")
+    
+    # Return the text code or unknown
+    return picto_codes.get(picto_name, "[?]")
 
 def process_compounds(compounds: list):
     if not compounds:
@@ -144,35 +156,78 @@ def process_compounds(compounds: list):
     results = []
     with st.spinner(f"Processing {len(new_compounds)} new compounds..."):
         for compound in new_compounds:
-            cid, pictos, hazards = get_compound_safety_data(compound)
-            if not cid:
-                st.error(f"Could not find data for '{compound}'. Skipping.")
+            try:
+                cid, pictos, hazards = get_compound_safety_data(compound)
+                if not cid:
+                    st.error(f"Could not find data for '{compound}'. Skipping.")
+                    continue
+
+                name, iupac, smiles = get_name_and_smiles(cid)
+                
+                # Extra safety for SMILES - some compounds might have invalid SMILES
+                try:
+                    acid_base_class = classify_acid_base(name, iupac, smiles, hazards)
+                except Exception as e:
+                    st.warning(f"Could not classify acid/base for '{compound}'. Setting as unknown. Error: {str(e)}")
+                    acid_base_class = "unknown"
+                
+                # Ensure acid_base_class is a string for compatibility with chemsort_multiple_order_3
+                if isinstance(acid_base_class, (list, tuple)):
+                    acid_base_class = ", ".join(acid_base_class)
+                elif acid_base_class is None:
+                    acid_base_class = "unknown"
+                
+                try:
+                    mp_c, bp_c, mp_f, bp_f = get_mp_bp(compound)
+                except Exception as e:
+                    st.warning(f"Could not retrieve melting/boiling points for '{compound}'. Error: {str(e)}")
+                    mp_c, bp_c, mp_f, bp_f = None, None, None, None
+                    
+                try:
+                    state = compound_state(mp_c, bp_c, mp_f, bp_f)
+                except Exception as e:
+                    st.warning(f"Could not determine state for '{compound}'. Setting as unknown. Error: {str(e)}")
+                    state = "state unknown"
+                    
+                try:
+                    sorted_picto = prioritize_pictograms(pictos)
+                except Exception as e:
+                    st.warning(f"Could not prioritize pictograms for '{compound}'. Error: {str(e)}")
+                    sorted_picto = []
+
+                compound_info = {
+                    "name": compound,
+                    "iupac": iupac,
+                    "smiles": smiles,
+                    "sorted_pictograms": sorted_picto,
+                    "hazard_statements": hazards,
+                    "acid_base_class": acid_base_class,  # Now guaranteed to be a string
+                    "state_room_temp": state,
+                    "melting_point_c": mp_c,
+                    "boiling_point_c": bp_c
+                }
+                results.append(compound_info)
+            except Exception as e:
+                st.error(f"Error processing '{compound}': {str(e)}")
                 continue
-
-            name, iupac, smiles = get_name_and_smiles(cid)
-            acid_base_class = classify_acid_base(name, iupac, smiles, hazards)
-            mp_c, bp_c, mp_f, bp_f = get_mp_bp(compound)
-            state = compound_state(mp_c, bp_c, mp_f, bp_f)
-            sorted_picto = prioritize_pictograms(pictos)
-
-            compound_info = {
-                "name": compound,
-                "iupac": iupac,
-                "smiles": smiles,
-                "sorted_pictograms": sorted_picto,
-                "hazard_statements": hazards,
-                "acid_base_class": acid_base_class,
-                "state_room_temp": state,
-                "melting_point_c": mp_c,
-                "boiling_point_c": bp_c
-            }
-            results.append(compound_info)
 
     if results:
         st.session_state.processed_compounds.extend(results)
         # Update storage groups with all processed compounds, do NOT reset
-        updated_storage = chemsort_multiple_order_3(st.session_state.processed_compounds, st.session_state.storage_groups)
-        st.session_state.storage_groups = updated_storage
+        try:
+            # Ensure all state keys exist in all storage groups
+            for group_name, group_data in st.session_state.storage_groups.items():
+                for state_key in ["solid", "liquid", "gas", "state unknown"]:
+                    if state_key not in group_data:
+                        group_data[state_key] = []
+                        
+            updated_storage = chemsort_multiple_order_3(st.session_state.processed_compounds, st.session_state.storage_groups)
+            st.session_state.storage_groups = updated_storage
+        except Exception as e:
+            st.error(f"Error during compound sorting: {str(e)}")
+            # Since we already added the compounds to processed_compounds, return True
+            # to indicate partial success even though sorting failed
+            return True
         return True
     else:
         st.error("Failed to process new compounds.")
@@ -191,27 +246,34 @@ def display_compound_details(compound):
     with st.expander(f"{compound['name']} Details"):
         cols = st.columns(2)
         with cols[0]:
-            st.markdown(f"**IUPAC:** {compound['iupac']}")
-            st.markdown(f"**SMILES:** {compound['smiles']}")
-            st.markdown(f"**State:** {compound['state_room_temp']}")
-            mp = compound['melting_point_c']
-            bp = compound['boiling_point_c']
+            st.markdown(f"**IUPAC:** {compound.get('iupac', 'N/A')}")
+            st.markdown(f"**SMILES:** {compound.get('smiles', 'N/A')}")
+            st.markdown(f"**State:** {compound.get('state_room_temp', 'N/A')}")
+            mp = compound.get('melting_point_c')
+            bp = compound.get('boiling_point_c')
             st.markdown(f"**Melting Point:** {mp if mp is not None else 'N/A'} °C")
             st.markdown(f"**Boiling Point:** {bp if bp is not None else 'N/A'} °C")
         with cols[1]:
-            abc = compound['acid_base_class']
-            abc_str = ", ".join(abc) if isinstance(abc, (list, tuple)) else abc
+            abc = compound.get('acid_base_class', 'N/A')
+            # Ensure the acid_base_class is displayed properly
+            if isinstance(abc, (list, tuple)):
+                abc_str = ", ".join(abc)
+            elif abc is None:
+                abc_str = "Unknown"
+            else:
+                abc_str = str(abc)
             st.markdown(f"**Acid/Base Class:** {abc_str}")
-            if compound['sorted_pictograms']:
-                st.markdown("**Pictograms:** " + " ".join(display_pictogram(p) for p in compound['sorted_pictograms']))
-            if compound['hazard_statements']:
+            if compound.get('sorted_pictograms', []):
+                picto_codes = [display_pictogram(p) for p in compound['sorted_pictograms']]
+                st.markdown(f"**Pictograms:** {' '.join(picto_codes)}")
+            if compound.get('hazard_statements', []):
                 st.markdown("**Hazard Statements:**")
                 for h in compound['hazard_statements']:
                     st.markdown(f"- {h}")
 
 # --- Layout ---
 
-st.markdown("<h1 class='main-header'>ChemStor - Chemical Storage Manager</h1>", unsafe_allow_html=True)
+st.markdown("<h1 class='main-header'>MolStorage - Chemical Storage Manager</h1>", unsafe_allow_html=True)
 
 with st.sidebar:
     st.header("Input Compounds")
@@ -275,10 +337,18 @@ if st.session_state.processed_compounds:
                         for state_key, compounds in states.items():
                             if compounds:
                                 with st.expander(f"{state_key.capitalize()} ({len(compounds)})", expanded=False):
-                                    for compound in compounds:
-                                        pictos = "".join(display_pictogram(p) for p in compound["sorted_pictograms"][:2])
+                                    for i, compound in enumerate(compounds):
+                                        # Create a unique key with index to avoid duplicates
+                                        button_key = f"btn_{group_name}_{state_key}_{compound['name']}_{i}"
+                                        
+                                        # Get pictograms as emojis
+                                        pictos = ""
+                                        if "sorted_pictograms" in compound and compound["sorted_pictograms"]:
+                                            pictos = "".join(display_pictogram(p) for p in compound["sorted_pictograms"][:2])
+                                        
+                                        # Create button with name and pictogram emojis
                                         btn_label = f"{pictos} {compound['name']}"
-                                        if st.button(btn_label, key=f"btn_{group_name}_{state_key}_{compound['name']}"):
+                                        if st.button(btn_label, key=button_key):
                                             add_to_displayed(compound)
 
 # Compound details below storage groups
@@ -287,8 +357,19 @@ if st.session_state.displayed_compounds:
     cols = st.columns(len(st.session_state.displayed_compounds))
     for i, compound in enumerate(st.session_state.displayed_compounds):
         with cols[i]:
-            pictos_str = "".join(display_pictogram(p) for p in compound['sorted_pictograms'][:2])
-            remove_key = f"remove_display_{compound['name']}"
+            # Safely get pictograms
+            pictos_str = ""
+            if "sorted_pictograms" in compound and compound["sorted_pictograms"]:
+                pictos_str = "".join(display_pictogram(p) for p in compound["sorted_pictograms"][:2])
+                
+            remove_key = f"remove_display_{compound['name']}_{i}"  # Added index for uniqueness
+
+            # Safely get pictograms as emojis
+            pictos_str = ""
+            if "sorted_pictograms" in compound and compound["sorted_pictograms"]:
+                pictos_str = "".join(display_pictogram(p) for p in compound["sorted_pictograms"][:2])
+                
+            remove_key = f"remove_display_{compound['name']}_{i}"  # Added index for uniqueness
 
             # Full styled box with compound name and details
             st.markdown(f"""
