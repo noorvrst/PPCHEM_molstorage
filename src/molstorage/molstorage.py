@@ -1,11 +1,12 @@
 import re
 import json
 import requests
-from rdkit import Chem
 import pubchempy as pcp # type: ignore
 from rdkit import Chem
 from typing import Optional, List, Dict, Any, Union, Tuple
 import math
+
+from typing import List
 
 def get_compound_safety_data(compound_name: str, debug: bool = False) -> Tuple[str, List[str], List[str]]:
     """
@@ -127,8 +128,11 @@ def get_name_and_smiles(cid: str) -> Tuple[str, str, str]:
     return record_title, iupac_name, smiles
 
 
-def classify_acid_base(name: str, iupac_name: str, smiles: str, ghs_statements: List[str]) ->  Union[str, Tuple[str, ...]]:
-    """Classify a compound as 'acid', 'basic', or 'unknown' based on generic name, IUPAC name, SMILES structure,
+from typing import List, Union, Tuple
+from rdkit import Chem
+
+def classify_acid_base(name: str, iupac_name: str, smiles: str, ghs_statements: List[str]) -> Union[str, Tuple[str, ...]]:
+    """Classify a compound as 'acid', 'base', or 'neutral' based on name, IUPAC, SMILES structure,
     and GHS hazard statements.
 
     Args:
@@ -138,42 +142,40 @@ def classify_acid_base(name: str, iupac_name: str, smiles: str, ghs_statements: 
         ghs_statements (List[str]): GHS hazard statements related to the compound.
 
     Returns:
-        str: A classification such as 'acid', 'basic', 'Unsure (from GHS H290)', or 'unknown'.
+        str: A classification such as 'acid', 'base', 'neutral', or 'amphoteric'.
     """
     name = name.lower()
     iupac_name = iupac_name.lower()
-
+    full_name = name + " " + iupac_name
     result = []
 
-    # Checks acid/base indicators in Name, IUPAC name, GHS hazard statements
-    full_name = name + " " + iupac_name
-
-    if any("H290" in stmt or "corrosive to metals" in stmt.lower() for stmt in ghs_statements):
-        result.append("Unsure (from GHS H290)")
 
     if "acid" in full_name:
         result.append("acid")
-
     if any(base_word in full_name for base_word in ["hydroxide", "amine", "ammonia", "amide"]):
         result.append("base")
 
-
-    # Substructure Matching with SMARTS (RDKit)
+    # 2. Structure-based rules using SMARTS
     acid_smarts = {
-        "Carboxylic acid": "[CX3](=O)[OX2H1]",  # COOH
-        "Sulfonic acid": "S(=O)(=O)[OH]",       # SO3H
-        "Phenol": "c[OH]",                      # OH on aromatic ring
+        "Carboxylic acid": "[CX3](=O)[OX2H1]",
+        "Sulfonic acid": "S(=O)(=O)[OH]",
+        "Phosphonic acid": "P(=O)([OH])[OH]",
+        "Phenol": "c[OH]",
+        "Imide": "[NX3](C(=O))[CX3](=O)",
+        "Thiol": "[SH]"
     }
 
     base_smarts = {
-        "Ammonia":        "[NX3;H3]",            # NH3
         "Amide": "[NX3][CX3](=O)[#6]",
-        "Urea-like": "[NX3][CX3](=O)[NX3]",
-        "Primary amine": "[NX3;H2][CX4]",        
+        "Primary amine": "[NX3;H2][CX4]",
         "Secondary amine": "[NX3;H1][CX4][CX4]",
         "Tertiary amine": "[NX3]([CX4])([CX4])",
-        "Imidazole-like": "n1cncc1",
         "Aniline": "c1ccc(cc1)[NH2]",
+        "Guanidine": "[NX3;H2][C](=[NX3;H1])[NX3;H2]",
+        "Imidazole": "c1cnc[nH]1",
+        "Pyridine": "n1ccccc1",
+        "Alkoxide": "[O-][#6]",
+        "Ammonia": "[NX3;H3]"
     }
 
     mol = Chem.MolFromSmiles(smiles)
@@ -186,14 +188,20 @@ def classify_acid_base(name: str, iupac_name: str, smiles: str, ghs_statements: 
     if found_acid:
         result.append("acid")
     if found_base:
-        result.append("basic")
+        result.append("base")
 
-    if not result:
-        return "unknown"
+    # Final classification
+    if "acid" in result and "base" not in result:
+        acid_base_class = "acid"
+    elif "base" in result and "acid" not in result:
+        acid_base_class = "base"
+    elif "acid" in result and "base" in result:
+        acid_base_class = "amphoteric"
+    else:
+        acid_base_class = "neutral"
 
-    acid_base_class = tuple(result)
-    
     return acid_base_class
+
 
 def get_mp_bp(compound_name: str) -> Tuple[Optional[float], Optional[float], Optional[float], Optional[float]]:
     """
@@ -293,7 +301,7 @@ def compound_state(mp_celsius: Optional[float], bp_celsius: Optional[float], mp_
         bp_fahrenheit (Optional[float]): Boiling point in degrees Fahrenheit.
 
     Returns:
-        str: The physical state at room temperature ("solid", "liquid", "gas", or "state unknown").
+        str: The physical state at room temperature ("solid", "liquid", "gas", or "unknown").
     """
     room_temp_celsius = 20  # Celsius
     room_temp_fahrenheit = 68  # Fahrenheit
@@ -334,7 +342,7 @@ def compound_state(mp_celsius: Optional[float], bp_celsius: Optional[float], mp_
     elif state_fahrenheit != "unknown":
         return state_fahrenheit
     else:
-        return "state unknown"
+        return "unknown"
 
 
 def prioritize_pictograms(pictogram_list: List[str]) -> List[str]:
@@ -370,13 +378,11 @@ def is_chemically_compatible(
     new_pictograms: List[str],
     existing_acid_base_class: str,
     new_acid_base_class: str,
-    existing_state: str,
-    new_state: str,
     group_name: str
 ) -> bool:
     """
     Determines whether two chemical compounds are chemically compatible for storage
-    based on pictograms, acid/base classification, physical state, and storage group.
+    based on pictograms, acid/base classification and storage group.
 
     Parameters:
     - existing_pictograms: List of hazard pictograms for the existing compound.
@@ -414,13 +420,6 @@ def is_chemically_compatible(
         if "Acute Toxic" in existing_pictograms or "Health Hazard" in existing_pictograms:
             return False
 
-    # Rule 4: Solids and liquids not together
-    if (
-        (existing_state == "solid" and new_state == "liquid") or
-        (existing_state == "liquid" and new_state == "solid")
-    ):
-        return False
-
     # Rule 5: Group-based restrictions (overrides compound-level checks)
     if group_name:
         group_name = group_name.lower()
@@ -445,7 +444,7 @@ def is_chemically_compatible(
 
 # Keep default_group(), default_group_gas(), and initialize_storage_groups() as before
 def default_group():
-    return {"solid": [], "liquid": []}
+    return {"solid": [], "liquid": [], "unknown": []}
 
 def default_group_gas():
     return {"gas": []}
@@ -475,8 +474,8 @@ def chemsort_multiple_order_3(compounds: List[Dict[str, Any]], storage_groups: D
     GHS pictograms, hazard statements, physical state, and acid/base classification.
 
     The function processes compounds by assigning them into predefined groups 
-    if they are compatible with it and the compounds in it.
-    If a compound does not any known group, it is either added to a matching 
+    if they are compatible with it and the compounds contained in the group.
+    If a compound is not compatible with any known group, it is either added to a matching 
     custom group or a new custom group is created.
 
     Parameters:
@@ -523,10 +522,10 @@ def chemsort_multiple_order_3(compounds: List[Dict[str, Any]], storage_groups: D
     custom_group_counter = 1
     custom_group_prefix = "custom_storage_"
     custom_groups = [key for key in storage_groups if key.startswith(custom_group_prefix)]
-
-    def is_compatible_with_group(group_name, state_key, compound, group_dict=storage_groups):
-        compounds_in_group = group_dict[group_name][state_key]
-        if not compounds_in_group:
+    
+    def is_compatible_with_group(group_name, compound, group_dict=storage_groups):
+    # If all state lists are empty, treat it like an empty group
+        if all(not group_dict[group_name][state_key] for state_key in ["solid", "liquid", "unknown"]):
             return is_chemically_compatible(
                 [],
                 compound["sorted_pictograms"],
@@ -534,28 +533,34 @@ def chemsort_multiple_order_3(compounds: List[Dict[str, Any]], storage_groups: D
                 compound["acid_base_class"],
                 "",
                 compound["state_room_temp"],
-                group_name)
-        for existing in compounds_in_group:
-            if not is_chemically_compatible(
-                existing["sorted_pictograms"],
-                compound["sorted_pictograms"],
-                existing["acid_base_class"],
-                compound["acid_base_class"],
-                existing["state_room_temp"],
-                compound["state_room_temp"],
                 group_name
-            ):
-                return False
+            )
+
+        # Otherwise, check compatibility against all existing compounds in all states
+        for state_key in ["solid", "liquid", "unknown"]:
+            compounds_in_group = group_dict[group_name][state_key]
+            for existing in compounds_in_group:
+                if not is_chemically_compatible(
+                    existing["sorted_pictograms"],
+                    compound["sorted_pictograms"],
+                    existing["acid_base_class"],
+                    compound["acid_base_class"],
+                    existing["state_room_temp"],
+                    compound["state_room_temp"],
+                    group_name
+                ):
+                    return False
         return True
+
 
 
     for compound in compounds:
         chemical = compound["name"]
         sorted_pictograms = compound["sorted_pictograms"]
         hazard_statements = compound["hazard_statements"]
-        acid_base_class = compound["acid_base_class"].lower()
+        acid_base_class = compound["acid_base_class"]
         state = compound["state_room_temp"]
-        state_key = 'liquid' if 'liquid' in state else 'solid' if 'solid' in state else 'gas'
+        state_key = 'liquid' if 'liquid' in state else 'solid' if 'solid' in state else 'gas' if "gas" in state else "unknown"
 
         all_statements = " ".join(hazard_statements).lower()
         sorted_successfully = False
@@ -577,13 +582,13 @@ def chemsort_multiple_order_3(compounds: List[Dict[str, Any]], storage_groups: D
 
             elif first_picto == "Oxidizer":
                 group = "oxidizer"
-                if is_compatible_with_group(group, state_key, compound):
+                if is_compatible_with_group(group, compound):
                     storage_groups["oxidizer"][state_key].append(compound)
                     sorted_successfully = True
 
             elif first_picto == "Flammable":
                 group = "pyrophoric" if any(p in all_statements for p in phrases_flam) else "flammable"
-                if is_compatible_with_group(group, state_key, compound):
+                if is_compatible_with_group(group, compound):
                     storage_groups[group][state_key].append(compound)
                     sorted_successfully = True
 
@@ -596,7 +601,7 @@ def chemsort_multiple_order_3(compounds: List[Dict[str, Any]], storage_groups: D
                     group = "base_corrosive_1" if is_severe else "base_irritant"
                 elif is_acid:
                     group = "acid_corrosive_1" if is_severe else "acid_irritant"
-                if group and is_compatible_with_group(group, state_key, compound):
+                if group and is_compatible_with_group(group, compound):
                     storage_groups[group][state_key].append(compound)
                     sorted_successfully = True
 
@@ -607,25 +612,25 @@ def chemsort_multiple_order_3(compounds: List[Dict[str, Any]], storage_groups: D
                     group = "cmr_stot"
                 else:
                     group = "toxicity_2_3"
-                if is_compatible_with_group(group, state_key, compound):
+                if is_compatible_with_group(group, compound):
                     storage_groups[group][state_key].append(compound)
                     sorted_successfully = True
 
             elif first_picto in ["Irritant", "Environmental Hazard"]:
                 group = "hazardous_environment" if "toxic to aquatic life" in all_statements else "none"
-                if is_compatible_with_group(group, state_key, compound):
+                if is_compatible_with_group(group, compound):
                     storage_groups[group][state_key].append(compound)
                     sorted_successfully = True
 
         if not sorted_successfully:
             if not sorted_pictograms:
                 group = "none"
-                if is_compatible_with_group(group, state_key, compound):
+                if is_compatible_with_group(group, compound):
                     storage_groups[group][state_key].append(compound)
                     sorted_successfully = True
             else:
                 for custom_group in custom_groups:
-                    if is_compatible_with_group(custom_group, state_key, compound):
+                    if is_compatible_with_group(custom_group, compound):
                         storage_groups[custom_group][state_key].append(compound)
                         sorted_successfully = True
                         break
@@ -643,3 +648,9 @@ def chemsort_multiple_order_3(compounds: List[Dict[str, Any]], storage_groups: D
             storage_groups[new_group_name][state_key].append(compound)
 
     return storage_groups
+
+
+                
+
+
+
