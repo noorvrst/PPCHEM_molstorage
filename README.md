@@ -38,7 +38,7 @@ After installing, create a new file and make sure the <code>molstorage_env</code
 ```python
 import molstorage
 
-molstorage.App.run()
+molstorage.launch_app()
 ```
 ## Developpers
 - Verstraete Noor, student in chemistry and chemical engineering at EPFL (Switzerland), email: noor.verstraete@epfl.ch
