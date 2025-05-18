@@ -1,10 +1,12 @@
-"""Storage of hazardous chemicals based on their pictograms, hazards statements, acid/base classification, state"""
-
 # src/molstorage/__init__.py
 
-from .molstorage import *  
+# Define the version explicitly
+__version__ = "0.1.0"
 
-# Add this function
+# Your current imports
+from .molstorage import *  # or your specific imports
+
+# The launch_app function
 def launch_app():
     """
     Launches the Streamlit user interface for molstorage.
