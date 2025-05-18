@@ -378,8 +378,6 @@ def is_chemically_compatible(
     new_pictograms: List[str],
     existing_acid_base_class: str,
     new_acid_base_class: str,
-    existing_state: str,
-    new_state: str,
     group_name: str
 ) -> bool:
     """
