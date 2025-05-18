@@ -12,7 +12,8 @@ dependencies = [
     "rdkit",  # For cheminformatics
     "requests",  # For making HTTP requests
     "pubchempy",  # For interacting with PubChem API
-    "typing-extensions",  # For type annotations (use only if < Python 3.9)
+    "typing-extensions",  # For type annotations (use only if < Python 3.9),
+    "streamlit"
 ]
 authors = [
     {name = "Delacou Daphné", email = "daphne.delacou@epfl.ch"},
