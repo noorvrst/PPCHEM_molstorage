@@ -33,7 +33,7 @@ conda activate chemstorm_env
 </pre>
 
 ## How to Use the Streamlit Web Application
-After installing, create a new file and make sure the <code>molstorage_env</code> environment is activated. Then, run the following code to launch the Streamlit application in your browser.
+After installing, create a new file and make sure the <code>chemstorm_env</code> environment is activated. Then, run the following code to launch the Streamlit application in your browser.
 
 ```python
 import chemstorm
