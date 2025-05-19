@@ -1,4 +1,4 @@
-<h1 align="center">💥MolStorage💥</h1>
+<h1 align="center">ChemStorM - Chemical Storage Manager</h1>
 
 #### A simple tool to help students analyze and understand the safety risks of different molecules and their proper storage.
 
