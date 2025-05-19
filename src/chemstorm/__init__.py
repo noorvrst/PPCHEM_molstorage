@@ -1,7 +1,6 @@
 # src/chemstorm/__init__.py
-"""A simple tool to help students analyze 
-and understand the safety risks of different molecules 
-and their proper storage."""
+"""Storage of chemicals based on their properties 
+and interactions with each other."""
 
 # Define the version explicitly
 __version__ = "0.1.0"

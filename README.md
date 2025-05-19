@@ -6,13 +6,13 @@
 1. Create and activate a new environment (another name can be given).
 <pre>
 <code>
-conda create -n molstorage_env python=3.10 
+conda create -n chemstorm_env python=3.10 
 </code>
 </pre>
 
 <pre>
 <code>
-conda activate molstorage_env
+conda activate chemstorm_env
 </code>
 </pre>
 
@@ -20,7 +20,7 @@ conda activate molstorage_env
 2. Pip install the package by copying this into your command line.
 <pre>
 <code>
-(molstorage_env) $ pip install git+https://github.com/noorvrst/PPCHEM_molstorage.git
+(chemstorm_env) $ pip install git+https://github.com/noorvrst/chemstorm.git
 </code>
 </pre>
 
@@ -36,9 +36,9 @@ conda activate molstorage_env
 After installing, create a new file and make sure the <code>molstorage_env</code> environment is activated. Then, run the following code to launch the Streamlit application in your browser.
 
 ```python
-import molstorage
+import chemstorm
 
-molstorage.launch_app()
+chemstorm.launch_app()
 ```
 ## Developpers
 - Verstraete Noor, student in chemistry and chemical engineering at EPFL (Switzerland), email: noor.verstraete@epfl.ch
