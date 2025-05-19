@@ -1,10 +1,13 @@
-# src/molstorage/__init__.py
+# src/chemstorm/__init__.py
+"""A simple tool to help students analyze 
+and understand the safety risks of different molecules 
+and their proper storage."""
 
 # Define the version explicitly
 __version__ = "0.1.0"
 
 # Your current imports
-from .molstorage import *  # or your specific imports
+from .chemstorm import *  # or your specific imports
 
 # The launch_app function
 def launch_app():

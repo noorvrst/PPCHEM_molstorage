@@ -1,4 +1,4 @@
-from molstorage.molstorage import hello_smiles
+from chemstorm.chemstorm import hello_smiles
 
 
 # Test the function

@@ -2,7 +2,7 @@ import streamlit as st
 import numpy as np
 import time
 
-from molstorage import (
+from chemstorm.chemstorm import (
     get_compound_safety_data,
     get_name_and_smiles,
     classify_acid_base,
