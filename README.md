@@ -40,6 +40,11 @@ import chemstorm
 
 chemstorm.launch_app()
 ```
+
+Here’s an overview of the interface.
+
+![Illustration](/assets/chemstorm_app_readme.png)
+
 ## Developpers
 - Verstraete Noor, student in chemistry and chemical engineering at EPFL (Switzerland), email: noor.verstraete@epfl.ch
    

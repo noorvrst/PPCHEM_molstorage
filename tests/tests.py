@@ -2,11 +2,11 @@ import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
 
-from chemstorm.chemstorm import chemsort_multiple_order_3, initialize_storage_groups
+from chemstorm import chemsort_multiple_order_3, initialize_storage_groups
 
 import pytest
 
-from chemstorm.chemstorm import (
+from chemstorm import (
     get_compound_safety_data,
     get_name_and_smiles,
     classify_acid_base,
