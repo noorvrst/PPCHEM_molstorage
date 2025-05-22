@@ -6,7 +6,7 @@ from chemstorm import chemsort_multiple_order_3, initialize_storage_groups
 
 import pytest
 
-from chemstorm import (
+from chemstorm.chemstorm import (
     get_compound_safety_data,
     get_name_and_smiles,
     classify_acid_base,
