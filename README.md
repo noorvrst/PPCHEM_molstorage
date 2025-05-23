@@ -27,6 +27,13 @@ conda activate chemstorm_env
 </code>
 </pre>
 
+4. To install the package, run:
+<pre>
+<code>
+(chemstorm_env) pip install -e ".[test,doc]"
+</code>
+</pre>
+
 ## How to Use the Streamlit Web Application
 After installing, create a new file and make sure the <code>chemstorm_env</code> environment is activated. Then, run the following code to launch the Streamlit application in your browser.
 
@@ -41,13 +48,6 @@ Here’s an overview of the interface.
 ![Illustration](/assets/chemstorm_app_readme.png)
 
 ## Run Tests and Coverage
-<pre>
-<code>
-(conda_env) $ pip install tox
-(conda_env) $ tox
-</code>
-</pre>
-
 <pre>
 <code>
 (conda_env) $ pip install tox
