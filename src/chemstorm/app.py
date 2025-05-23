@@ -10,7 +10,7 @@ from chemstorm import (
     compound_state,
     prioritize_pictograms,
     initialize_storage_groups,
-    chemsort_multiple_order_3
+    chemsort_multiple_order
 )
 
 # Set page configuration
@@ -103,7 +103,7 @@ def process_compounds():
 
     # Sort compounds into storage groups
     status_text.text("Sorting compounds into storage groups...")
-    st.session_state.storage = chemsort_multiple_order_3(compounds_to_sort, st.session_state.storage)
+    st.session_state.storage = chemsort_multiple_order(compounds_to_sort, st.session_state.storage)
 
     progress_bar.empty()
     status_text.text("Processing complete!")

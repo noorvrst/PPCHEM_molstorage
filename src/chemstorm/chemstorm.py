@@ -461,7 +461,7 @@ def initialize_storage_groups() -> Dict[str, Dict[str, List[Dict[str, Any]]]]:
         "nitric_acid": default_group()
     }
 
-def chemsort_multiple_order_3(compounds: List[Dict[str, Any]], storage_groups: Dict[str, Dict[str, List[Dict[str, Any]]]]) -> Dict[str, Dict[str, List[Dict[str, Any]]]]:
+def chemsort_multiple_order(compounds: List[Dict[str, Any]], storage_groups: Dict[str, Dict[str, List[Dict[str, Any]]]]) -> Dict[str, Dict[str, List[Dict[str, Any]]]]:
     """
     Sorts a list of chemical compounds into appropriate storage groups based on 
     GHS pictograms, hazard statements, physical state, and acid/base classification.

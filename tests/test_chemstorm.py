@@ -1,6 +1,6 @@
 import pytest
 
-from chemstorm.chemstorm import (
+from chemstorm import (
     get_compound_safety_data,
     get_name_and_smiles,
     classify_acid_base,
@@ -9,7 +9,7 @@ from chemstorm.chemstorm import (
     prioritize_pictograms,
     is_chemically_compatible,
     initialize_storage_groups,
-    chemsort_multiple_order_3
+    chemsort_multiple_order
 )
 
 def test_get_compound_safety_data_valid():
@@ -199,7 +199,7 @@ def test_chemsort_basic_compatibility():
         }
     ]
 
-    sorted_groups = chemsort_multiple_order_3(test_compounds, groups)
+    sorted_groups = chemsort_multiple_order(test_compounds, groups)
 
     assert any(c["name"] == "Ethanol" for c in sorted_groups["flammable"]["liquid"])
     assert any(c["name"] == "Nitric Acid" for c in sorted_groups["nitric_acid"]["liquid"])
@@ -227,7 +227,7 @@ def test_custom_group_for_flammable_and_oxidizer():
         }
     ]
 
-    sorted_groups = chemsort_multiple_order_3(test_compounds, groups)
+    sorted_groups = chemsort_multiple_order(test_compounds, groups)
 
     ethanol_in_flammable = any(c["name"] == "Ethanol" for c in sorted_groups["flammable"]["liquid"])
 
