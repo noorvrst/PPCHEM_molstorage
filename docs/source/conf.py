@@ -36,7 +36,7 @@ except ImportError:
     from sphinx import apidoc
 
 output_dir = os.path.join(__location__, "api")
-module_dir = os.path.join(__location__, "../../src/molstorage")
+module_dir = os.path.join(__location__, "../../src/chemstorm")
 try:
     shutil.rmtree(output_dir)
 except FileNotFoundError:
@@ -58,7 +58,7 @@ except Exception as e:
 
 # -- Project information
 
-_metadata = metadata("molstorage")
+_metadata = metadata("chemstorm")
 
 project = _metadata["Name"]
 author = _metadata["Author-email"].split("<", 1)[0].strip()
