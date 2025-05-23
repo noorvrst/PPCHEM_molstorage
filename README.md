@@ -23,7 +23,7 @@ conda activate chemstorm_env
 2. Pip install the package by copying this into your command line.
 <pre>
 <code>
-(chemstorm_env) $ pip install git+https://github.com/noorvrst/chemstorm.git
+(chemstorm_env) $ git clone https://github.com/noorvrst/chemstorm.git
 </code>
 </pre>
 
