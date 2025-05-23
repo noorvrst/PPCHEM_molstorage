@@ -117,13 +117,19 @@ def get_name_and_smiles(cid: str) -> Tuple[str, str, str]:
     Returns:
         tuple[str, str, str]: A tuple containing the Record Title, IUPAC name, and SMILES string.
     """
-    compound = pcp.Compound.from_cid(cid)
+    if cid is None:
+        print("Warning: CID is None")
+        return "Unknown", "Unknown", "Unknown"
 
-    record_title = compound.synonyms[0] if compound.synonyms else "Unknown"
-    iupac_name = compound.iupac_name or "Unknown"
-    smiles = compound.isomeric_smiles or compound.canonical_smiles or "Unknown"
-
-    return record_title, iupac_name, smiles
+    try:
+        compound = pcp.Compound.from_cid(cid)
+        record_title = compound.synonyms[0] if compound.synonyms else "Unknown"
+        iupac_name = compound.iupac_name or "Unknown"
+        smiles = compound.isomeric_smiles or compound.canonical_smiles or "Unknown"
+        return record_title, iupac_name, smiles
+    except Exception as e:
+        print(f"Error retrieving compound for CID '{cid}': {e}")
+        return "Unknown", "Unknown", "Unknown"
 
 
 def classify_acid_base(name: str, iupac_name: str, smiles: str, ghs_statements: List[str]) -> Union[str, Tuple[str, ...]]:
