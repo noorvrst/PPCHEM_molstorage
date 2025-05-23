@@ -30,7 +30,7 @@ conda activate chemstorm_env
 4. To install the package, run:
 <pre>
 <code>
-(chemstorm_env) pip install -e ".[test,doc]"
+(chemstorm_env) $ pip install -e ".[test,doc]"
 </code>
 </pre>
 
