@@ -48,6 +48,13 @@ Here’s an overview of the interface.
 </code>
 </pre>
 
+<pre>
+<code>
+(conda_env) $ pip install tox
+(conda_env) $ tox
+</code>
+</pre>
+
 ## Developpers
 - Verstraete Noor, student in chemistry and chemical engineering at EPFL (Switzerland), email: noor.verstraete@epfl.ch
    
