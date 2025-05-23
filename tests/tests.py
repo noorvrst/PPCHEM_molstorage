@@ -1,9 +1,3 @@
-import sys
-import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
-
-from chemstorm import chemsort_multiple_order_3, initialize_storage_groups
-
 import pytest
 
 from chemstorm.chemstorm import (
