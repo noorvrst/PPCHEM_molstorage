@@ -20,7 +20,7 @@ conda activate chemstorm_env
 </pre>
 
 
-2. Pip install the package by copying this into your command line.
+2. In order to clone the repository on your local machine, run the following command.
 <pre>
 <code>
 (chemstorm_env) $ git clone https://github.com/noorvrst/chemstorm.git
