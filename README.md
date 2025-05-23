@@ -2,8 +2,6 @@
 
 #### A simple tool to help students analyze and understand the safety risks of different molecules and their proper storage.
 
-❗ **Attention**: For the package to work, **Google Chrome** must be installed, as the code is based on it.
-
 
 ## How to Install It
 1. Create and activate a new environment (another name can be given).
